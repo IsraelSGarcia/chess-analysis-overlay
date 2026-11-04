@@ -1,0 +1,24 @@
+# Chess capture visualizer — Python dependencies
+#
+# Install with:
+#   pip install -r requirements.txt
+
+# Chess rules engine
+chess>=1.11.2
+
+# GUI overlay
+PySide6>=6.6
+
+# Image processing (chessvision pulls in opencv-python-headless;
+# we need the full build for PySide6 to co-exist)
+opencv-python>=4.9
+numpy>=2.4
+
+# Board & piece recognition (includes pre-trained ONNX model)
+chessvision>=0.13.1
+
+# Screen capture
+mss>=9.0
+
+# Image I/O
+Pillow>=12.0
