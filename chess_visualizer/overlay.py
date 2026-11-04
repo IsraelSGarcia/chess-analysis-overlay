@@ -17,19 +17,18 @@ class OverlayConfig:
     board_region: Tuple[int, int, int, int] = (0, 0, 800, 800)
 
     # Arrow colours (RGBA)
-    white_color: Tuple[int, int, int, int] = (45,  145, 255, 230)    # vibrant blue
-    black_color: Tuple[int, int, int, int] = (245,  55,  55, 230)    # vibrant red
+    white_color: Tuple[int, int, int, int] = (45, 145, 255, 230)    # vibrant royal blue
+    black_color: Tuple[int, int, int, int] = (245, 55,  55, 230)    # vibrant crimson red
 
-    # Small sleek arrow geometry (fractions of square size)
-    shaft_width_ratio: float = 0.05    # 5% of square width (clean & clearly visible)
-    head_length_ratio: float = 0.18    # 18% of square width
-    head_width_ratio:  float = 0.13    # 13% of square width
-
+    # Arrow geometry
+    arrow_size_mode: str = "small"      # "small" or "medium"
     opacity: float = 1.0
 
-    show_white: bool = True
-    show_black: bool = True
-    show_highlights: bool = True
+    overlay_visible: bool = True       # Master visibility toggle
+    show_white: bool = True            # Player toggle
+    show_black: bool = True            # Enemy toggle
+    show_highlights: bool = True       # Square tints
+    show_defense: bool = True          # Defending friendly pieces arrows
     show_hud: bool = False
 
     flipped: bool = False              # True when Black is at the bottom
@@ -37,3 +36,15 @@ class OverlayConfig:
     @property
     def square_size(self) -> int:
         return max(1, self.board_region[2] // 8)
+
+    @property
+    def shaft_width_ratio(self) -> float:
+        return 0.042 if self.arrow_size_mode == "small" else 0.068
+
+    @property
+    def head_length_ratio(self) -> float:
+        return 0.17 if self.arrow_size_mode == "small" else 0.24
+
+    @property
+    def head_width_ratio(self) -> float:
+        return 0.12 if self.arrow_size_mode == "small" else 0.17

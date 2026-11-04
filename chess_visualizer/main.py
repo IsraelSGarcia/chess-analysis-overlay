@@ -97,52 +97,84 @@ def main() -> None:
             board_region=region,
             opacity=settings.opacity,
             flipped=settings.flipped,
+            overlay_visible=settings.overlay_visible,
             show_white=settings.show_white,
             show_black=settings.show_black,
             show_highlights=settings.show_highlights,
+            show_defense=settings.show_defense,
+            arrow_size_mode=settings.arrow_size_mode,
         )
 
     overlay = OverlayWidget(make_config())
     control_bar: Optional[ControlBar] = None
 
-    def update_control_bar_position():
-        if control_bar and settings.board_region:
-            l, t, w, _ = settings.board_region
-            control_bar.position_above_board(l, t, w)
+    def refresh_ui_states():
+        if control_bar:
+            control_bar.update_states(
+                overlay_visible=settings.overlay_visible,
+                show_player=settings.show_white,
+                show_enemy=settings.show_black,
+                show_defense=settings.show_defense,
+                show_highlights=settings.show_highlights,
+                arrow_size_mode=settings.arrow_size_mode,
+                flipped=settings.flipped,
+            )
 
     # -------------------------------------------------------------------------
     # Actions
     # -------------------------------------------------------------------------
+    def toggle_master():
+        """Master toggle: Show / Hide overlay arrows and highlights."""
+        settings.overlay_visible = not settings.overlay_visible
+        settings.save()
+        overlay.set_config(make_config())
+        refresh_ui_states()
+
     def toggle_player():
         settings.show_white = not settings.show_white
         settings.save()
         overlay.set_config(make_config())
-        if control_bar:
-            control_bar.update_states(settings.show_white, settings.show_black, settings.flipped)
+        refresh_ui_states()
 
     def toggle_enemy():
         settings.show_black = not settings.show_black
         settings.save()
         overlay.set_config(make_config())
-        if control_bar:
-            control_bar.update_states(settings.show_white, settings.show_black, settings.flipped)
+        refresh_ui_states()
+
+    def toggle_defense():
+        settings.show_defense = not settings.show_defense
+        settings.save()
+        overlay.set_config(make_config())
+        refresh_ui_states()
+        trigger_immediate_update()
 
     def toggle_flip():
-        nonlocal last_fen
         settings.flipped = not settings.flipped
         settings.save()
         overlay.set_config(make_config())
-        if control_bar:
-            control_bar.update_states(settings.show_white, settings.show_black, settings.flipped)
-        # Invalidate last_fen so update_loop recognizes the new perspective immediately
-        last_fen = None
-        # Run update_loop immediately so transition is instant with zero flicker
-        update_loop()
+        refresh_ui_states()
+        trigger_immediate_update()
 
     def toggle_highlights():
         settings.show_highlights = not settings.show_highlights
         settings.save()
         overlay.set_config(make_config())
+        refresh_ui_states()
+
+    def toggle_arrow_size():
+        settings.arrow_size_mode = "medium" if settings.arrow_size_mode == "small" else "small"
+        settings.save()
+        overlay.set_config(make_config())
+        refresh_ui_states()
+
+    def nudge_board(dx: int, dy: int):
+        if settings.board_region:
+            l, t, w, h = settings.board_region
+            settings.board_region = (l + dx, t + dy, w, h)
+            settings.save()
+            overlay.set_config(make_config())
+            trigger_immediate_update()
 
     def run_recalibrate():
         from chess_visualizer._calibration import CalibrationWidget
@@ -160,7 +192,9 @@ def main() -> None:
             settings.board_region = cal.selected_region
             settings.save()
             overlay.set_config(make_config())
-            update_control_bar_position()
+            if control_bar:
+                l, t, w, _ = settings.board_region
+                control_bar.position_above_board(l, t, w)
             logger.info("New board region calibrated: %s", cal.selected_region)
 
         overlay.show()
@@ -169,6 +203,8 @@ def main() -> None:
 
     def close_app():
         if control_bar:
+            settings.control_bar_pos = (control_bar.x(), control_bar.y())
+            settings.save()
             control_bar.close()
         overlay.close()
         app.quit()
@@ -177,13 +213,25 @@ def main() -> None:
     # Create ControlBar
     # -------------------------------------------------------------------------
     control_bar = ControlBar(
+        on_toggle_master=toggle_master,
         on_toggle_white=toggle_player,
         on_toggle_black=toggle_enemy,
-        on_recalibrate=run_recalibrate,
+        on_toggle_defense=toggle_defense,
         on_flip=toggle_flip,
+        on_toggle_highlights=toggle_highlights,
+        on_toggle_arrow_size=toggle_arrow_size,
+        on_recalibrate=run_recalibrate,
+        on_nudge_board=nudge_board,
         on_close=close_app,
     )
-    control_bar.update_states(settings.show_white, settings.show_black, settings.flipped)
+    refresh_ui_states()
+
+    # Position ControlBar: restore saved position or place above board
+    if settings.control_bar_pos:
+        control_bar.move(*settings.control_bar_pos)
+    elif settings.board_region:
+        l, t, w, _ = settings.board_region
+        control_bar.position_above_board(l, t, w)
 
     # -------------------------------------------------------------------------
     # Initial Calibration if needed
@@ -193,23 +241,26 @@ def main() -> None:
 
     overlay.show()
     control_bar.show()
-    update_control_bar_position()
 
     # -------------------------------------------------------------------------
     # Global Hotkeys using 'keyboard' library
     # -------------------------------------------------------------------------
     try:
         import keyboard
+        # Easy Master Toggle: Ctrl+Space (no conflict with typing) and F1
+        keyboard.add_hotkey("ctrl+space", toggle_master, suppress=False)
+        keyboard.add_hotkey("f1", toggle_master, suppress=False)
+
+        # Dedicated key for every button
         keyboard.add_hotkey("f2", run_recalibrate, suppress=False)
         keyboard.add_hotkey("f3", toggle_player, suppress=False)
         keyboard.add_hotkey("f4", toggle_enemy, suppress=False)
+        keyboard.add_hotkey("f5", toggle_defense, suppress=False)
         keyboard.add_hotkey("f6", toggle_flip, suppress=False)
         keyboard.add_hotkey("f7", toggle_highlights, suppress=False)
+        keyboard.add_hotkey("f8", toggle_arrow_size, suppress=False)
         keyboard.add_hotkey("f9", close_app, suppress=False)
-        keyboard.add_hotkey("ctrl+shift+w", toggle_player, suppress=False)
-        keyboard.add_hotkey("ctrl+shift+b", toggle_enemy, suppress=False)
-        keyboard.add_hotkey("ctrl+shift+c", run_recalibrate, suppress=False)
-        keyboard.add_hotkey("ctrl+shift+q", close_app, suppress=False)
+        keyboard.add_hotkey("esc", close_app, suppress=False)
     except Exception as exc:
         logger.debug("Global keyboard hook failed: %s", exc)
 
@@ -217,7 +268,7 @@ def main() -> None:
     # Static FEN mode
     # -------------------------------------------------------------------------
     if args.fen:
-        caps = get_all_captures_dict(args.fen, include_empty=True)
+        caps = get_all_captures_dict(args.fen, include_empty=True, include_defense=settings.show_defense)
         overlay.set_captures(caps["white"], caps["black"])
         sys.exit(app.exec())
 
@@ -238,13 +289,14 @@ def main() -> None:
         left, top, w, h = region
         frame = cap.grab_region(left, top, w, h)
         if frame is None:
+            if control_bar:
+                control_bar.set_status_text("⚠️ Capture: No frame", ok=False)
             return
 
         # Direct board recognition on the cropped board image
         result = recognizer.recognize_board(frame, flipped=settings.flipped)
 
         if not result.success or not result.fen:
-            logger.debug("Recognition failed: %s", result.error)
             return
 
         fen = result.fen
@@ -261,16 +313,27 @@ def main() -> None:
             return
 
         last_fen = fen
-        logger.info("Position recognized: %s (confidence: %.1f%%)", fen, result.confidence * 100)
+        conf_pct = int(result.confidence * 100)
+        logger.info("Position recognized: %s (confidence: %d%%)", fen, conf_pct)
 
-        # Calculate captures for all pieces, including empty squares
+        # Calculate captures and defense for all pieces
         try:
-            captures = get_all_captures_dict(fen, include_empty=True)
+            captures = get_all_captures_dict(fen, include_empty=True, include_defense=True)
             overlay.set_captures(captures["white"], captures["black"])
-            logger.info("Drawn %d White capture arrows, %d Black capture arrows (flipped=%s)",
-                        len(captures["white"]), len(captures["black"]), settings.flipped)
+            w_count, b_count = len(captures["white"]), len(captures["black"])
+            logger.info("Drawn %d White arrows, %d Black arrows (defense=%s)",
+                        w_count, b_count, settings.show_defense)
+
+            if control_bar:
+                status = f"● Live • Conf: {conf_pct}% • {w_count} White, {b_count} Black"
+                control_bar.set_status_text(status, ok=True)
         except Exception as exc:
             logger.error("Capture calculation error: %s", exc)
+
+    def trigger_immediate_update():
+        nonlocal last_fen
+        last_fen = None
+        update_loop()
 
     interval_ms = max(250, int(settings.update_interval * 1000))
     timer = QTimer()

@@ -4,14 +4,13 @@ _overlay_widget.py
 PySide6 rendering overlay for chess capture visualization.
 
 Features:
-- Highlights every square a piece can capture onto (including empty squares).
-- Perspective aware: Player captures are ALWAYS Blue, Enemy captures are ALWAYS Red.
-  When you flip to Black view, your Black pieces become Blue and enemy White pieces become Red!
-- Small sleek arrows connecting attacking pieces to their target squares.
-- Multi-arrow convergence: multiple arrows pointing to the same target are clearly visible.
-- Click-through: completely transparent to mouse events so the underlying game is playable.
-- Excluded from screen capture via SetWindowDisplayAffinity so capture backends
-  never see the overlay itself.
+- Highlights every square a piece can capture or defend.
+- Master toggle awareness: when hidden, renders nothing with zero overhead.
+- Perspective aware: Player is ALWAYS Blue, Enemy is ALWAYS Red.
+- Small / Medium arrow size modes.
+- Defending arrows pointing to friendly protected pieces.
+- Click-through: completely transparent to mouse events.
+- Excluded from screen capture via SetWindowDisplayAffinity.
 """
 
 from __future__ import annotations
@@ -62,7 +61,6 @@ class OverlayWidget(QWidget):
         left, top, w, h = self._config.board_region
         self.setGeometry(left, top, w, h)
 
-        # Exclude this overlay window from screen capture so it never captures itself
         try:
             hwnd = int(self.winId())
             ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
@@ -87,34 +85,43 @@ class OverlayWidget(QWidget):
     # -------------------------------------------------------------------------
 
     def paintEvent(self, _) -> None:
+        cfg = self._config
+
+        # Master toggle: if hidden, render nothing
+        if not cfg.overlay_visible:
+            return
+
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        cfg = self._config
 
         # Perspective awareness:
         # If not flipped (White view): Player = White (Blue), Enemy = Black (Red)
         # If flipped (Black view):     Player = Black (Blue), Enemy = White (Red)
-        if not cfg.flipped:
-            player_captures = self._white_captures
-            enemy_captures  = self._black_captures
+        raw_player = self._white_captures if not cfg.flipped else self._black_captures
+        raw_enemy  = self._black_captures if not cfg.flipped else self._white_captures
+
+        # Filter out defense moves if defense toggle is disabled
+        if cfg.show_defense:
+            player_moves = raw_player
+            enemy_moves  = raw_enemy
         else:
-            player_captures = self._black_captures
-            enemy_captures  = self._white_captures
+            player_moves = [m for m in raw_player if not getattr(m, 'is_defense', False)]
+            enemy_moves  = [m for m in raw_enemy if not getattr(m, 'is_defense', False)]
 
-        # 1. Draw square highlights on destination squares
+        # 1. Draw square highlights
         if cfg.show_highlights:
-            self._draw_square_highlights(p, player_captures, enemy_captures)
+            self._draw_square_highlights(p, player_moves, enemy_moves)
 
-        # 2. Draw capture arrows (Blue for Player, Red for Enemy)
+        # 2. Draw arrows (Blue for Player, Red for Enemy)
         if cfg.show_white:  # Player toggle
-            self._draw_arrows(p, player_captures, QColor(*cfg.white_color))
+            self._draw_arrows(p, player_moves, QColor(*cfg.white_color))
 
         if cfg.show_black:  # Enemy toggle
-            self._draw_arrows(p, enemy_captures, QColor(*cfg.black_color))
+            self._draw_arrows(p, enemy_moves, QColor(*cfg.black_color))
 
         # 3. HUD status text (optional)
         if cfg.show_hud:
-            self._draw_hud(p, len(player_captures), len(enemy_captures))
+            self._draw_hud(p, len(player_moves), len(enemy_moves))
 
         p.end()
 
@@ -146,15 +153,15 @@ class OverlayWidget(QWidget):
             rect = QRectF(x + 1, y + 1, sq - 2, sq - 2)
 
             if is_player and is_enemy:
-                # Contested square (both sides can capture here)
+                # Contested square (both sides can capture/defend here)
                 fill_color = QColor(180, 75, 240, 80)     # rich violet
                 border_color = QColor(210, 100, 255, 210)
             elif is_player:
-                # Player-only capture square (Blue)
+                # Player capture/defense square (Blue)
                 fill_color = QColor(45, 145, 255, 75)     # rich blue
                 border_color = QColor(60, 160, 255, 200)
             else:
-                # Enemy-only capture square (Red)
+                # Enemy capture/defense square (Red)
                 fill_color = QColor(245, 55, 55, 75)      # rich red
                 border_color = QColor(255, 75, 75, 200)
 
@@ -165,11 +172,10 @@ class OverlayWidget(QWidget):
             p.drawRect(rect)
 
     # -------------------------------------------------------------------------
-    # Small, sleek capture arrows
+    # Arrows
     # -------------------------------------------------------------------------
 
     def _draw_arrows(self, p: QPainter, captures: list, color: QColor) -> None:
-        # Group by target to handle multiple arrows converging on the same square
         targets_count: Dict[int, int] = {}
         targets_index: Dict[int, int] = {}
         for c in captures:
@@ -183,16 +189,16 @@ class OverlayWidget(QWidget):
             fx, fy = self._sq_centre(c.from_sq)
             tx, ty = self._sq_centre(c.to_sq)
 
-            # If multiple arrows point to same square, slightly fan out their landing points
+            # If multiple arrows point to same square, slightly fan out
             if total > 1:
-                fan_offset = (idx - (total - 1) / 2.0) * (self._config.square_size * 0.16)
+                fan_offset = (idx - (total - 1) / 2.0) * (self._config.square_size * 0.15)
                 dx, dy = tx - fx, ty - fy
                 dist = math.hypot(dx, dy)
                 if dist > 1:
                     tx += (-dy / dist) * fan_offset
                     ty += (dx / dist) * fan_offset
 
-            self._draw_single_arrow(p, fx, fy, tx, ty, color, c.is_occupied)
+            self._draw_single_arrow(p, fx, fy, tx, ty, color, getattr(c, 'is_defense', False))
 
     def _draw_single_arrow(
         self,
@@ -200,7 +206,7 @@ class OverlayWidget(QWidget):
         x1: float, y1: float,
         x2: float, y2: float,
         color: QColor,
-        is_occupied: bool,
+        is_defense: bool,
     ) -> None:
         cfg = self._config
         sq = cfg.square_size
@@ -217,7 +223,7 @@ class OverlayWidget(QWidget):
         head_len = max(6.0, sq * cfg.head_length_ratio)
         head_half = max(4.0, sq * cfg.head_width_ratio / 2.0)
 
-        # Start arrow away from piece center so piece is visible
+        # Start arrow away from piece center
         start_offset = sq * 0.20
         sx, sy = x1 + ux * start_offset, y1 + uy * start_offset
 
@@ -259,8 +265,8 @@ class OverlayWidget(QWidget):
     def _draw_hud(self, p: QPainter, player_count: int, enemy_count: int) -> None:
         cfg = self._config
         lines = [
-            f"You: {player_count} captures",
-            f"Enemy: {enemy_count} captures",
+            f"You: {player_count} arrows",
+            f"Enemy: {enemy_count} arrows",
         ]
         if self._status:
             lines.append(self._status)
@@ -292,12 +298,12 @@ class OverlayWidget(QWidget):
     def _sq_topleft(self, sq_idx: int) -> Tuple[float, float]:
         cfg = self._config
         sq = cfg.square_size
-        file_ = chess.square_file(sq_idx)   # 0=a … 7=h
-        rank_ = chess.square_rank(sq_idx)   # 0=1 … 7=8
+        file_ = chess.square_file(sq_idx)
+        rank_ = chess.square_rank(sq_idx)
 
         if not cfg.flipped:
             col = file_
-            row = 7 - rank_   # rank 8 is top row 0
+            row = 7 - rank_
         else:
             col = 7 - file_
             row = rank_
