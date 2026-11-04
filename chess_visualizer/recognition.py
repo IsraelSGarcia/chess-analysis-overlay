@@ -93,6 +93,162 @@ def clean_square_image(sq_img: np.ndarray) -> Image.Image:
 
 
 # -------------------------------------------------------------------------
+# Auto-Snapping: Chessboard outer boundary & internal grid line detection
+# -------------------------------------------------------------------------
+
+def refine_grid_box(
+    gray_img: np.ndarray,
+    init_x: int,
+    init_y: int,
+    init_w: int,
+    init_h: int,
+    search_radius: int = 14,
+) -> Tuple[int, int, int, int]:
+    """
+    Sub-pixel/pixel grid alignment: Maximizes contrast along the 7 internal
+    checkerboard square division lines to align perfectly with the 8x8 squares.
+    """
+    gh, gw = gray_img.shape
+    if init_w < 40 or init_h < 40 or gray_img.std() < 5.0:
+        return (init_x, init_y, init_w, init_h)
+
+    pad = search_radius + 4
+    x0 = max(0, init_x - pad)
+    y0 = max(0, init_y - pad)
+    x1 = min(gw, init_x + init_w + pad)
+    y1 = min(gh, init_y + init_h + pad)
+
+    sub = gray_img[y0:y1, x0:x1].astype(np.float32)
+    if sub.shape[0] < 30 or sub.shape[1] < 30:
+        return (init_x, init_y, init_w, init_h)
+
+    dy = np.abs(sub[1:, :] - sub[:-1, :])
+    dx = np.abs(sub[:, 1:] - sub[:, :-1])
+
+    rel_x = init_x - x0
+    rel_y = init_y - y0
+    slice_dy = dy[:, max(0, rel_x) : min(sub.shape[1], rel_x + init_w)]
+    row_means_y = np.mean(slice_dy, axis=1) if slice_dy.size > 0 else np.zeros(dy.shape[0])
+
+    best_y, best_h, max_y = init_y, init_h, -1.0
+    for dy_off in range(-search_radius, search_radius + 1):
+        cy = rel_y + dy_off
+        if cy < 0:
+            continue
+        for dh_off in range(-search_radius, search_radius + 1):
+            ch = init_h + dh_off
+            if ch < 40:
+                continue
+            max_line_y = cy + int(round(7 * ch / 8.0)) - 1
+            if max_line_y >= len(row_means_y):
+                continue
+            idx = (cy + np.round(np.arange(1, 8) * (ch / 8.0)) - 1).astype(int)
+            sc = float(np.sum(row_means_y[idx]))
+            if sc > max_y:
+                max_y = sc
+                best_y = y0 + cy
+                best_h = ch
+
+    rel_y_best = best_y - y0
+    slice_dx = dx[max(0, rel_y_best) : min(sub.shape[0], rel_y_best + best_h), :]
+    col_means_x = np.mean(slice_dx, axis=0) if slice_dx.size > 0 else np.zeros(dx.shape[1])
+
+    best_x, best_w, max_x = init_x, init_w, -1.0
+    for dx_off in range(-search_radius, search_radius + 1):
+        cx = rel_x + dx_off
+        if cx < 0:
+            continue
+        for dw_off in range(-search_radius, search_radius + 1):
+            cw = init_w + dw_off
+            if cw < 40:
+                continue
+            max_line_x = cx + int(round(7 * cw / 8.0)) - 1
+            if max_line_x >= len(col_means_x):
+                continue
+            idx = (cx + np.round(np.arange(1, 8) * (cw / 8.0)) - 1).astype(int)
+            sc = float(np.sum(col_means_x[idx]))
+            if sc > max_x:
+                max_x = sc
+                best_x = x0 + cx
+                best_w = cw
+
+    best_s = (best_w + best_h) // 2
+    return (best_x, best_y, best_s, best_s)
+
+
+def detect_chessboard_in_crop(
+    crop_pil: Image.Image,
+    rough_box_in_crop: Optional[Tuple[int, int, int, int]] = None,
+) -> Optional[Tuple[int, int, int, int]]:
+    """
+    Detect the exact 8x8 chessboard outer boundary within an image crop.
+
+    Uses chessvision.BoardDetector to identify the board and refines
+    the boundaries against the internal 8x8 grid line transitions.
+    Falls back to OpenCV contour detection if BoardDetector finds no candidate.
+
+    Parameters
+    ----------
+    crop_pil : PIL.Image.Image
+        The cropped image around the chessboard (in raw pixels).
+    rough_box_in_crop : tuple of (x, y, w, h) or None
+        Expected rough location of the board within the crop image.
+
+    Returns
+    -------
+    (x, y, w, h) in crop pixel coordinates, or None if no board was detected.
+    """
+    crop_arr = np.array(crop_pil)
+    gray = cv2.cvtColor(crop_arr, cv2.COLOR_RGB2GRAY) if crop_arr.ndim == 3 else crop_arr
+
+    # 1. Primary: chessvision BoardDetector
+    try:
+        from chessvision import BoardDetector
+        detector = BoardDetector()
+        candidates = detector.detect(crop_pil)
+        if candidates:
+            if rough_box_in_crop is not None:
+                rx, ry, rw, rh = rough_box_in_crop
+                rcx, rcy = rx + rw / 2.0, ry + rh / 2.0
+                candidates.sort(key=lambda c: (
+                    (c.box[0] + c.box[2] / 2.0 - rcx) ** 2 +
+                    (c.box[1] + c.box[3] / 2.0 - rcy) ** 2
+                ))
+            bx, by, bw, bh = candidates[0].box
+            refined = refine_grid_box(gray, bx, by, bw, bh)
+            return refined
+    except Exception as exc:
+        logger.debug("BoardDetector detection failed: %s", exc)
+
+    # 2. Secondary fallback: OpenCV Canny edge + square contour
+    gh, gw = gray.shape
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 30, 120)
+    kernel = np.ones((3, 3), np.uint8)
+    dilated = cv2.dilate(edges, kernel, iterations=2)
+    contours, _ = cv2.findContours(dilated, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+    cnt_candidates = []
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        if w < gw * 0.3 or h < gh * 0.3:
+            continue
+        aspect = w / float(h)
+        if 0.82 <= aspect <= 1.18:
+            hull = cv2.convexHull(cnt)
+            if cv2.contourArea(hull) / (w * h) > 0.65:
+                cnt_candidates.append((w * h, (x, y, w, h)))
+
+    if cnt_candidates:
+        cnt_candidates.sort(key=lambda c: c[0], reverse=True)
+        cbx, cby, cbw, cbh = cnt_candidates[0][1]
+        refined = refine_grid_box(gray, cbx, cby, cbw, cbh)
+        return refined
+
+    return None
+
+
+# -------------------------------------------------------------------------
 # Recognizer
 # -------------------------------------------------------------------------
 
