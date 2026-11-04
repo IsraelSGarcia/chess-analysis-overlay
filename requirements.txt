@@ -20,5 +20,8 @@ chessvision>=0.13.1
 # Screen capture
 mss>=9.0
 
+# Global hotkeys
+keyboard>=0.13.5
+
 # Image I/O
 Pillow>=12.0
