@@ -5,8 +5,11 @@ PySide6 rendering overlay for chess capture visualization.
 
 Features:
 - Highlights every square a piece can capture or defend.
+- Exact sub-pixel square alignment: eliminates integer division drift across the 8x8 grid.
+- Independent physical orientation vs player perspective:
+  Physical board orientation controls where squares sit on screen;
+  Player perspective controls who gets Blue (Player) vs Red (Enemy).
 - Master toggle awareness: when hidden, renders nothing with zero overhead.
-- Perspective aware: Player is ALWAYS Blue, Enemy is ALWAYS Red.
 - Small / Medium arrow size modes.
 - Defending arrows pointing to friendly protected pieces.
 - Click-through: completely transparent to mouse events.
@@ -44,6 +47,7 @@ class OverlayWidget(QWidget):
         self._config = config
         self._white_captures: list = []
         self._black_captures: list = []
+        self._board_flipped: bool = False
         self._status: str = ""
         self._setup_window()
 
@@ -67,10 +71,16 @@ class OverlayWidget(QWidget):
         except Exception as exc:
             logger.debug("SetWindowDisplayAffinity failed: %s", exc)
 
-    def set_captures(self, white: list, black: list, status: str = "") -> None:
+    def set_captures(self, white: list, black: list, board_flipped: bool | None = None, status: str = "") -> None:
         self._white_captures = white
         self._black_captures = black
+        if board_flipped is not None:
+            self._board_flipped = board_flipped
         self._status = status
+        self.update()
+
+    def set_board_flipped(self, board_flipped: bool) -> None:
+        self._board_flipped = board_flipped
         self.update()
 
     def set_config(self, config) -> None:
@@ -94,11 +104,15 @@ class OverlayWidget(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
-        # Perspective awareness:
-        # If not flipped (White view): Player = White (Blue), Enemy = Black (Red)
-        # If flipped (Black view):     Player = Black (Blue), Enemy = White (Red)
-        raw_player = self._white_captures if not cfg.flipped else self._black_captures
-        raw_enemy  = self._black_captures if not cfg.flipped else self._white_captures
+        # Perspective awareness (who gets Blue vs Red):
+        # Default (White perspective): Player = White (Blue), Enemy = Black (Red)
+        # Flipped (Black perspective): Player = Black (Blue), Enemy = White (Red)
+        if not cfg.flipped:
+            raw_player = self._white_captures
+            raw_enemy  = self._black_captures
+        else:
+            raw_player = self._black_captures
+            raw_enemy  = self._white_captures
 
         # Filter out defense moves if defense toggle is disabled
         if cfg.show_defense:
@@ -131,7 +145,6 @@ class OverlayWidget(QWidget):
 
     def _draw_square_highlights(self, p: QPainter, player_caps: list, enemy_caps: list) -> None:
         cfg = self._config
-        sq = cfg.square_size
 
         player_targets: Set[int] = set()
         enemy_targets: Set[int] = set()
@@ -149,24 +162,23 @@ class OverlayWidget(QWidget):
         for sq_idx in all_targets:
             is_player = sq_idx in player_targets
             is_enemy = sq_idx in enemy_targets
-            x, y = self._sq_topleft(sq_idx)
-            rect = QRectF(x + 1, y + 1, sq - 2, sq - 2)
+            rect = self._get_square_rect(sq_idx)
 
             if is_player and is_enemy:
                 # Contested square (both sides can capture/defend here)
-                fill_color = QColor(180, 75, 240, 80)     # rich violet
-                border_color = QColor(210, 100, 255, 210)
+                fill_color = QColor(180, 75, 240, 65)     # rich violet
+                border_color = QColor(210, 100, 255, 185)
             elif is_player:
                 # Player capture/defense square (Blue)
-                fill_color = QColor(45, 145, 255, 75)     # rich blue
-                border_color = QColor(60, 160, 255, 200)
+                fill_color = QColor(45, 145, 255, 60)     # rich blue
+                border_color = QColor(60, 160, 255, 185)
             else:
                 # Enemy capture/defense square (Red)
-                fill_color = QColor(245, 55, 55, 75)      # rich red
-                border_color = QColor(255, 75, 75, 200)
+                fill_color = QColor(245, 55, 55, 60)      # rich red
+                border_color = QColor(255, 75, 75, 185)
 
             p.fillRect(rect, fill_color)
-            pen = QPen(border_color, 2.0)
+            pen = QPen(border_color, 1.5)
             p.setPen(pen)
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawRect(rect)
@@ -181,17 +193,19 @@ class OverlayWidget(QWidget):
         for c in captures:
             targets_count[c.to_sq] = targets_count.get(c.to_sq, 0) + 1
 
+        sq_dim = min(self.width(), self.height()) / 8.0
+
         for c in captures:
             idx = targets_index.get(c.to_sq, 0)
             targets_index[c.to_sq] = idx + 1
             total = targets_count[c.to_sq]
 
-            fx, fy = self._sq_centre(c.from_sq)
-            tx, ty = self._sq_centre(c.to_sq)
+            fx, fy = self._get_square_centre(c.from_sq)
+            tx, ty = self._get_square_centre(c.to_sq)
 
             # If multiple arrows point to same square, slightly fan out
             if total > 1:
-                fan_offset = (idx - (total - 1) / 2.0) * (self._config.square_size * 0.15)
+                fan_offset = (idx - (total - 1) / 2.0) * (sq_dim * 0.15)
                 dx, dy = tx - fx, ty - fy
                 dist = math.hypot(dx, dy)
                 if dist > 1:
@@ -209,7 +223,7 @@ class OverlayWidget(QWidget):
         is_defense: bool,
     ) -> None:
         cfg = self._config
-        sq = cfg.square_size
+        sq = min(self.width(), self.height()) / 8.0
 
         dx, dy = x2 - x1, y2 - y1
         length = math.hypot(dx, dy)
@@ -292,25 +306,42 @@ class OverlayWidget(QWidget):
             p.drawText(pad + 2, pad + (i + 1) * line_h - 2, line)
 
     # -------------------------------------------------------------------------
-    # Coordinates
+    # Exact Sub-Pixel Coordinates & Centering
     # -------------------------------------------------------------------------
 
-    def _sq_topleft(self, sq_idx: int) -> Tuple[float, float]:
-        cfg = self._config
-        sq = cfg.square_size
+    def _get_square_rect(self, sq_idx: int) -> QRectF:
+        """
+        Return the exact QRectF for square sq_idx within the overlay window.
+        Uses exact floating-point divisions to eliminate integer rounding drift.
+        Physical orientation on screen determines square placement.
+        """
+        w = float(self.width())
+        h = float(self.height())
+        sq_w = w / 8.0
+        sq_h = h / 8.0
+
         file_ = chess.square_file(sq_idx)
         rank_ = chess.square_rank(sq_idx)
 
-        if not cfg.flipped:
+        # Physical board layout on screen:
+        # If not board_flipped (White at bottom): rank 8 is top row 0, file a is left col 0.
+        # If board_flipped (Black at bottom):     rank 1 is top row 0, file h is left col 0.
+        if not self._board_flipped:
             col = file_
             row = 7 - rank_
         else:
             col = 7 - file_
             row = rank_
 
-        return float(col * sq), float(row * sq)
+        x1 = col * sq_w
+        y1 = row * sq_h
+        x2 = (col + 1) * sq_w
+        y2 = (row + 1) * sq_h
 
-    def _sq_centre(self, sq_idx: int) -> Tuple[float, float]:
-        x, y = self._sq_topleft(sq_idx)
-        half = self._config.square_size / 2.0
-        return x + half, y + half
+        # Inset by 1px so the square border doesn't collide with neighboring squares
+        return QRectF(x1 + 1.0, y1 + 1.0, max(1.0, (x2 - x1) - 2.0), max(1.0, (y2 - y1) - 2.0))
+
+    def _get_square_centre(self, sq_idx: int) -> Tuple[float, float]:
+        """Return the exact center (x, y) for square sq_idx within the overlay window."""
+        c = self._get_square_rect(sq_idx).center()
+        return c.x(), c.y()

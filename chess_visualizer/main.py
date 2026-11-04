@@ -268,7 +268,7 @@ def main() -> None:
     # -------------------------------------------------------------------------
     if args.fen:
         caps = get_all_captures_dict(args.fen, include_empty=True, include_defense=settings.show_defense)
-        overlay.set_captures(caps["white"], caps["black"])
+        overlay.set_captures(caps["white"], caps["black"], board_flipped=args.flip)
         sys.exit(app.exec())
 
     # -------------------------------------------------------------------------
@@ -291,7 +291,8 @@ def main() -> None:
             return
 
         # Direct board recognition on the cropped board image
-        result = recognizer.recognize_board(frame, flipped=settings.flipped)
+        # Let recognizer auto-infer physical orientation so FEN and squares are always physically aligned
+        result = recognizer.recognize_board(frame, flipped=None)
 
         if not result.success or not result.fen:
             return
@@ -316,7 +317,7 @@ def main() -> None:
         # Calculate captures and defense for all pieces
         try:
             captures = get_all_captures_dict(fen, include_empty=True, include_defense=True)
-            overlay.set_captures(captures["white"], captures["black"])
+            overlay.set_captures(captures["white"], captures["black"], board_flipped=result.flipped)
             w_count, b_count = len(captures["white"]), len(captures["black"])
             logger.info("Drawn %d White arrows, %d Black arrows (defense=%s)",
                         w_count, b_count, settings.show_defense)

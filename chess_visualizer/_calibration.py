@@ -4,10 +4,11 @@ _calibration.py
 Interactive drag-to-select calibration overlay with auto-grid snapping.
 
 Features:
-- Auto-Grid Recognition: Just drag a rough box over the board; the app
+- Auto-Grid Recognition: Drag a rough area over the board; the app
   automatically detects the exact 8x8 chessboard boundary and snaps to it.
+- Minimalist, monochrome UI with zero emojis.
 - WDA_EXCLUDEFROMCAPTURE: Invisible to screen capture for pristine screenshots.
-- Live 8x8 Grid Preview: Shows the exact square divisions locked to the board.
+- Live 8x8 Grid Preview: Shows exact square divisions locked to the board.
 - Keyboard fine-tuning: Arrow keys to nudge (1px / Shift for 5px), +/- to resize.
 - Enter/Space to confirm, ESC to cancel.
 """
@@ -43,7 +44,7 @@ class CalibrationWidget(QWidget):
         self._current: Optional[QPoint] = None
         self._rect: Optional[QRect] = None
         self._is_snapped: bool = False
-        self._status_text: str = "Drag a rough box over the chessboard — it auto-snaps to the grid"
+        self._status_text: str = "Drag a rough box over the board to auto-snap"
 
         # Banner button hit-test rects
         self._btn_confirm_rect = QRect()
@@ -96,7 +97,7 @@ class CalibrationWidget(QWidget):
             self._current = pos
             self._rect = None
             self._is_snapped = False
-            self._status_text = "Selecting rough area..."
+            self._status_text = "Selecting area..."
             self.update()
 
     def mouseMoveEvent(self, event) -> None:
@@ -114,7 +115,7 @@ class CalibrationWidget(QWidget):
             if rough.width() >= 30 and rough.height() >= 30:
                 self._snap_to_chessboard(rough)
             else:
-                self._status_text = "Drag a rough box over the chessboard — it auto-snaps to the grid"
+                self._status_text = "Drag a rough box over the board to auto-snap"
 
             self.update()
 
@@ -139,10 +140,10 @@ class CalibrationWidget(QWidget):
 
         # Add ~18% padding around rough selection so full board is enclosed
         pad = max(24, int(max(rw, rh) * 0.18))
-        exp_l = max(geo.x(), rx - pad)
-        exp_t = max(geo.y(), ry - pad)
-        exp_r = min(geo.x() + geo.width(), rx + rw + pad)
-        exp_b = min(geo.y() + geo.height(), ry + rh + pad)
+        exp_l = max(geo.x(), geo.x() + rx - pad)
+        exp_t = max(geo.y(), geo.y() + ry - pad)
+        exp_r = min(geo.x() + geo.width(), geo.x() + rx + rw + pad)
+        exp_b = min(geo.y() + geo.height(), geo.y() + ry + rh + pad)
         exp_w = exp_r - exp_l
         exp_h = exp_b - exp_t
 
@@ -150,19 +151,17 @@ class CalibrationWidget(QWidget):
             self._rect = self._force_square(rough_rect)
             return
 
-        # Grab clean desktop underneath this window
         crop_pil = self._cap.grab_region(exp_l, exp_t, exp_w, exp_h)
         if crop_pil is None:
             self._rect = self._force_square(rough_rect)
             self._is_snapped = False
             s = self._rect.width()
-            self._status_text = f"Manual area ({s}×{s} px) • Press Enter to confirm"
+            self._status_text = f"Manual area: {s}×{s}"
             return
 
-        # Physical rough box inside crop_pil
         rough_phys = (
-            int(round((rx - exp_l) * dpr)),
-            int(round((ry - exp_t) * dpr)),
+            int(round((geo.x() + rx - exp_l) * dpr)),
+            int(round((geo.y() + ry - exp_t) * dpr)),
             int(round(rw * dpr)),
             int(round(rh * dpr)),
         )
@@ -170,9 +169,9 @@ class CalibrationWidget(QWidget):
         detected_phys = detect_chessboard_in_crop(crop_pil, rough_phys)
         if detected_phys:
             pbx, pby, pbw, pbh = detected_phys
-            # Convert physical crop pixels back to Qt logical screen coordinates
-            log_x = exp_l + int(round(pbx / dpr))
-            log_y = exp_t + int(round(pby / dpr))
+            # Convert physical crop pixels back to Qt screen logical coordinates
+            log_x = exp_l + int(round(pbx / dpr)) - geo.x()
+            log_y = exp_t + int(round(pby / dpr)) - geo.y()
             log_w = int(round(pbw / dpr))
             log_h = int(round(pbh / dpr))
             log_s = (log_w + log_h) // 2
@@ -180,13 +179,13 @@ class CalibrationWidget(QWidget):
             self._rect = QRect(log_x, log_y, log_s, log_s)
             self._is_snapped = True
             sq = log_s // 8
-            self._status_text = f"✓ Snapped to 8×8 grid ({log_s}×{log_s} px, square {sq}px) • Press Enter to confirm"
+            self._status_text = f"Snapped: {log_s}×{log_s} (Square: {sq}px)"
             logger.info("Auto-snapped chessboard: %s", (log_x, log_y, log_s, log_s))
         else:
             self._rect = self._force_square(rough_rect)
             self._is_snapped = False
             s = self._rect.width()
-            self._status_text = f"Manual area ({s}×{s} px) — no grid detected. Use arrows to nudge."
+            self._status_text = f"Manual area: {s}×{s}"
 
     @staticmethod
     def _force_square(rect: QRect) -> QRect:
@@ -201,9 +200,12 @@ class CalibrationWidget(QWidget):
 
     def _confirm(self) -> None:
         if self._rect and self._rect.width() >= 40:
+            screen = QApplication.primaryScreen()
+            gx = screen.geometry().x() if screen else 0
+            gy = screen.geometry().y() if screen else 0
             self.selected_region = (
-                self._rect.left(),
-                self._rect.top(),
+                gx + self._rect.left(),
+                gy + self._rect.top(),
                 self._rect.width(),
                 self._rect.height(),
             )
@@ -241,7 +243,7 @@ class CalibrationWidget(QWidget):
             elif key in (Qt.Key.Key_Minus, Qt.Key.Key_Underscore):
                 if w > 40:
                     self._rect = QRect(x, y, w - step, h - step)
-            self._status_text = f"Adjusted: ({self._rect.width()}×{self._rect.height()} px) • Press Enter to confirm"
+            self._status_text = f"Adjusted: {self._rect.width()}×{self._rect.height()}"
             self.update()
 
     # -------------------------------------------------------------------------
@@ -252,66 +254,59 @@ class CalibrationWidget(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
-        # 1. Subtle dark translucent veil over the desktop
-        p.fillRect(self.rect(), QColor(0, 0, 0, 115))
+        # 1. Subtle dark translucent veil over desktop
+        p.fillRect(self.rect(), QColor(0, 0, 0, 110))
 
-        # 2. Sleek floating pill toolbar at the top center
-        pill_w = 660
-        pill_h = 42
+        # 2. Minimalist floating pill toolbar at the top center (monochrome)
+        pill_w = 540
+        pill_h = 38
         pill_x = (self.width() - pill_w) // 2
-        pill_y = 18
+        pill_y = 16
         pill_rect = QRect(pill_x, pill_y, pill_w, pill_h)
 
-        # Background
-        p.setPen(QPen(QColor(255, 255, 255, 30), 1))
-        p.setBrush(QColor(18, 20, 24, 245))
-        p.drawRoundedRect(pill_rect, 10, 10)
+        p.setPen(QPen(QColor(255, 255, 255, 22), 1))
+        p.setBrush(QColor(20, 22, 26, 245))
+        p.drawRoundedRect(pill_rect, 6, 6)
 
-        # Icon
-        p.setPen(QColor(0, 210, 255))
-        font_icon = QFont("Segoe UI", 12)
-        font_icon.setBold(True)
-        p.setFont(font_icon)
-        p.drawText(pill_x + 14, pill_y + 27, "♟")
+        # Grip dots
+        p.setPen(QColor(75, 82, 96))
+        font_grip = QFont("Consolas", 10, QFont.Weight.Bold)
+        p.setFont(font_grip)
+        p.drawText(pill_x + 12, pill_y + 23, "::")
 
         # Status text
-        if self._is_snapped:
-            p.setPen(QColor(56, 217, 169))  # Emerald/cyan for successful snap
-        else:
-            p.setPen(QColor(220, 225, 235))
+        p.setPen(QColor(220, 225, 235))
         font_status = QFont("Segoe UI", 9)
         p.setFont(font_status)
-        p.drawText(pill_x + 38, pill_y + 26, self._status_text)
+        p.drawText(pill_x + 36, pill_y + 24, self._status_text)
 
         # Right buttons inside pill
-        btn_w = 80
-        btn_h = 28
-        btn_confirm_x = pill_x + pill_w - (btn_w * 2 + 18)
-        btn_cancel_x = pill_x + pill_w - (btn_w + 10)
-        btn_y = pill_y + 7
+        btn_w = 70
+        btn_h = 26
+        btn_confirm_x = pill_x + pill_w - (btn_w * 2 + 14)
+        btn_cancel_x = pill_x + pill_w - (btn_w + 8)
+        btn_y = pill_y + 6
 
         self._btn_confirm_rect = QRect(btn_confirm_x, btn_y, btn_w, btn_h)
         self._btn_cancel_rect = QRect(btn_cancel_x, btn_y, btn_w, btn_h)
 
-        # Confirm button
+        # Confirm button (minimal monochrome)
         has_selection = self._rect is not None and self._rect.width() >= 40
-        btn_confirm_bg = QColor(31, 111, 235) if has_selection else QColor(40, 44, 52)
-        btn_confirm_fg = QColor(255, 255, 255) if has_selection else QColor(120, 125, 135)
-        p.setPen(Qt.PenStyle.NoPen)
+        btn_confirm_bg = QColor(255, 255, 255, 28) if has_selection else QColor(255, 255, 255, 10)
+        btn_confirm_fg = QColor(255, 255, 255) if has_selection else QColor(110, 116, 128)
+        p.setPen(QPen(QColor(255, 255, 255, 45) if has_selection else QColor(255, 255, 255, 15), 1))
         p.setBrush(btn_confirm_bg)
-        p.drawRoundedRect(self._btn_confirm_rect, 6, 6)
+        p.drawRoundedRect(self._btn_confirm_rect, 4, 4)
         p.setPen(btn_confirm_fg)
-        font_btn = QFont("Segoe UI", 9)
-        font_btn.setBold(True)
+        font_btn = QFont("Segoe UI", 9, QFont.Weight.DemiBold if has_selection else QFont.Weight.Normal)
         p.setFont(font_btn)
-        p.drawText(self._btn_confirm_rect, Qt.AlignmentFlag.AlignCenter, "Confirm ↵")
+        p.drawText(self._btn_confirm_rect, Qt.AlignmentFlag.AlignCenter, "Confirm")
 
-        # Cancel button
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(33, 38, 45))
-        p.drawRoundedRect(self._btn_cancel_rect, 6, 6)
-        p.setPen(QColor(200, 205, 215))
-        font_btn.setBold(False)
+        # Cancel button (minimal monochrome)
+        p.setPen(QPen(QColor(255, 255, 255, 15), 1))
+        p.setBrush(QColor(255, 255, 255, 10))
+        p.drawRoundedRect(self._btn_cancel_rect, 4, 4)
+        p.setPen(QColor(180, 185, 195))
         p.setFont(font_btn)
         p.drawText(self._btn_cancel_rect, Qt.AlignmentFlag.AlignCenter, "Cancel")
 
@@ -319,17 +314,10 @@ class CalibrationWidget(QWidget):
         if self._start and self._current:
             drag_rect = QRect(self._start, self._current).normalized()
             if drag_rect.width() >= 5 and drag_rect.height() >= 5:
-                # Translucent fill
-                p.fillRect(drag_rect, QColor(0, 210, 255, 25))
-                # Dashed border
-                p.setPen(QPen(QColor(0, 210, 255, 180), 1.5, Qt.PenStyle.DashLine))
+                p.fillRect(drag_rect, QColor(255, 255, 255, 18))
+                p.setPen(QPen(QColor(255, 255, 255, 160), 1, Qt.PenStyle.DashLine))
                 p.setBrush(Qt.BrushStyle.NoBrush)
                 p.drawRect(drag_rect)
-                # Size tag
-                p.setPen(QColor(0, 210, 255))
-                p.setFont(QFont("Consolas", 9))
-                p.drawText(drag_rect.left(), max(pill_y + pill_h + 16, drag_rect.top() - 6),
-                           f"Rough area: {drag_rect.width()}×{drag_rect.height()} px (Release to snap)")
 
         # 4. Final Snapped / Selected Board Box
         elif self._rect and self._rect.width() >= 10:
@@ -345,30 +333,14 @@ class CalibrationWidget(QWidget):
             p.fillRect(self._rect, Qt.GlobalColor.transparent)
             p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
 
-            # Outer crisp cyan boundary
-            accent_color = QColor(0, 210, 255) if self._is_snapped else QColor(88, 166, 255)
-            p.setPen(QPen(accent_color, 2))
+            # Crisp minimalist boundary
+            border_color = QColor(240, 245, 255) if self._is_snapped else QColor(180, 190, 205)
+            p.setPen(QPen(border_color, 1.5))
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawRect(self._rect)
 
-            # High-tech corner viewfinder brackets
-            bracket_len = min(16, rw // 8)
-            p.setPen(QPen(accent_color, 3))
-            # Top-left
-            p.drawLine(rx, ry, rx + bracket_len, ry)
-            p.drawLine(rx, ry, rx, ry + bracket_len)
-            # Top-right
-            p.drawLine(rx + rw, ry, rx + rw - bracket_len, ry)
-            p.drawLine(rx + rw, ry, rx + rw, ry + bracket_len)
-            # Bottom-left
-            p.drawLine(rx, ry + rh, rx + bracket_len, ry + rh)
-            p.drawLine(rx, ry + rh, rx, ry + rh - bracket_len)
-            # Bottom-right
-            p.drawLine(rx + rw, ry + rh, rx + rw - bracket_len, ry + rh)
-            p.drawLine(rx + rw, ry + rh, rx + rw, ry + rh - bracket_len)
-
-            # 8x8 internal grid lines
-            pen_grid = QPen(QColor(0, 210, 255, 100), 1, Qt.PenStyle.DashLine)
+            # 8x8 internal grid lines using exact floating-point divisions
+            pen_grid = QPen(QColor(255, 255, 255, 75), 1, Qt.PenStyle.DashLine)
             p.setPen(pen_grid)
             sq_w = rw / 8.0
             sq_h = rh / 8.0
@@ -379,22 +351,18 @@ class CalibrationWidget(QWidget):
                 p.drawLine(rx, gy, rx + rw, gy)
 
             # Floating tag pill above the board
-            tag_text = (
-                f"✓ 8×8 Grid Snapped: {rw}×{rh} px (Square: {rw // 8} px)"
-                if self._is_snapped
-                else f"Grid Box: {rw}×{rh} px"
-            )
-            tag_w = len(tag_text) * 7 + 24
-            tag_h = 22
+            tag_text = f"{rw}×{rh}"
+            tag_w = len(tag_text) * 7 + 16
+            tag_h = 20
             tag_x = rx
-            tag_y = max(pill_y + pill_h + 8, ry - tag_h - 6)
+            tag_y = max(pill_y + pill_h + 8, ry - tag_h - 4)
 
             p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(QColor(18, 20, 24, 230))
+            p.setBrush(QColor(20, 22, 26, 230))
             p.drawRoundedRect(QRect(tag_x, tag_y, tag_w, tag_h), 4, 4)
 
-            p.setPen(accent_color)
-            p.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+            p.setPen(QColor(220, 225, 235))
+            p.setFont(QFont("Segoe UI", 8, QFont.Weight.DemiBold))
             p.drawText(QRect(tag_x, tag_y, tag_w, tag_h), Qt.AlignmentFlag.AlignCenter, tag_text)
 
         p.end()

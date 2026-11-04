@@ -3,22 +3,22 @@ _control_bar.py
 ===============
 Minimalist floating toolbar for Chess Capture Visualizer.
 
-Sleek, compact single-row design with comfortable drag area
-and clean pill-style buttons.
+Clean, monochromatic single-row design with singular word buttons
+and zero emojis or bright colored accents.
 """
 
 from __future__ import annotations
 
 from typing import Callable
 from PySide6.QtCore import Qt, QPoint
-from PySide6.QtGui import QFont, QCursor
+from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QLabel, QFrame,
 )
 
 
 class ControlBar(QWidget):
-    """Compact floating pill toolbar with easy drag space and clean buttons."""
+    """Monochrome floating toolbar with singular-word minimalist buttons."""
 
     def __init__(
         self,
@@ -51,7 +51,7 @@ class ControlBar(QWidget):
             | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setFixedHeight(44)
+        self.setFixedHeight(38)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -62,111 +62,91 @@ class ControlBar(QWidget):
         self.pill.setObjectName("pill")
         self.pill.setStyleSheet("""
             QFrame#pill {
-                background-color: rgba(18, 20, 24, 245);
-                border: 1px solid rgba(255, 255, 255, 30);
-                border-radius: 10px;
+                background-color: rgba(20, 22, 26, 245);
+                border: 1px solid rgba(255, 255, 255, 22);
+                border-radius: 6px;
             }
         """)
 
         pill_layout = QHBoxLayout(self.pill)
-        pill_layout.setContentsMargins(14, 4, 8, 4)
-        pill_layout.setSpacing(6)
+        pill_layout.setContentsMargins(10, 3, 6, 3)
+        pill_layout.setSpacing(5)
 
         # -----------------------------------------------------------------
-        # Drag Grip & Title (Comfortable empty space to grab and move)
+        # Minimal Drag Grip
         # -----------------------------------------------------------------
-        self.grip = QLabel("♟")
-        self.grip.setStyleSheet("color: #58a6ff; font-size: 14px; font-weight: bold;")
+        self.grip = QLabel("::")
+        self.grip.setStyleSheet("color: #4b5260; font-size: 13px; font-weight: bold; margin-right: 4px;")
         self.grip.setCursor(Qt.CursorShape.SizeAllCursor)
         pill_layout.addWidget(self.grip)
 
-        # Clean drag spacer
-        self.spacer = QLabel("")
-        self.spacer.setFixedWidth(12)
-        self.spacer.setCursor(Qt.CursorShape.SizeAllCursor)
-        pill_layout.addWidget(self.spacer)
-
         # -----------------------------------------------------------------
-        # Clean Pill Buttons
+        # Minimalist Singular-Word Buttons (Pure Monochrome)
         # -----------------------------------------------------------------
 
-        # Master toggle
-        self.btn_master = QPushButton("👁 ON")
+        # Master visibility
+        self.btn_master = QPushButton("Overlay")
         self.btn_master.setCheckable(True)
         self.btn_master.setChecked(True)
         self.btn_master.setToolTip("Toggle Overlay Visibility (Ctrl+Alt+X)")
         self.btn_master.clicked.connect(self.on_toggle_master)
-        self._style_button(self.btn_master, active_bg="#1f6feb", active_color="#ffffff")
+        self._style_button(self.btn_master)
         pill_layout.addWidget(self.btn_master)
 
-        # You (Blue)
-        self.btn_player = QPushButton("🔵 You")
+        # Player toggle
+        self.btn_player = QPushButton("Player")
         self.btn_player.setCheckable(True)
         self.btn_player.setChecked(True)
-        self.btn_player.setToolTip("Toggle Your Influence (Ctrl+Alt+A)")
+        self.btn_player.setToolTip("Toggle Player Moves (Ctrl+Alt+A)")
         self.btn_player.clicked.connect(self.on_toggle_white)
-        self._style_button(self.btn_player, active_bg="#238636", active_color="#ffffff")
+        self._style_button(self.btn_player)
         pill_layout.addWidget(self.btn_player)
 
-        # Enemy (Red)
-        self.btn_enemy = QPushButton("🔴 Enemy")
+        # Enemy toggle
+        self.btn_enemy = QPushButton("Enemy")
         self.btn_enemy.setCheckable(True)
         self.btn_enemy.setChecked(True)
-        self.btn_enemy.setToolTip("Toggle Enemy Influence (Ctrl+Alt+S)")
+        self.btn_enemy.setToolTip("Toggle Enemy Moves (Ctrl+Alt+S)")
         self.btn_enemy.clicked.connect(self.on_toggle_black)
-        self._style_button(self.btn_enemy, active_bg="#da3633", active_color="#ffffff")
+        self._style_button(self.btn_enemy)
         pill_layout.addWidget(self.btn_enemy)
 
-        # Defend (Purple)
-        self.btn_defense = QPushButton("🛡 Defend")
+        # Defense toggle
+        self.btn_defense = QPushButton("Defense")
         self.btn_defense.setCheckable(True)
         self.btn_defense.setChecked(True)
         self.btn_defense.setToolTip("Toggle Defending Friendly Pieces (Ctrl+Alt+D)")
         self.btn_defense.clicked.connect(self.on_toggle_defense)
-        self._style_button(self.btn_defense, active_bg="#8957e5", active_color="#ffffff")
+        self._style_button(self.btn_defense)
         pill_layout.addWidget(self.btn_defense)
 
         # Flip perspective
-        self.btn_flip = QPushButton("🔄 Flip")
-        self.btn_flip.setToolTip("Flip Perspective White ↔ Black (Ctrl+Alt+F)")
+        self.btn_flip = QPushButton("Flip")
+        self.btn_flip.setToolTip("Flip Colors / Perspective (Ctrl+Alt+F)")
         self.btn_flip.clicked.connect(self.on_flip)
-        self._style_button(self.btn_flip, active_bg="#21262d", active_color="#c9d1d9")
+        self._style_button(self.btn_flip)
         pill_layout.addWidget(self.btn_flip)
 
         # Highlights toggle
-        self.btn_hl = QPushButton("🎨 Grid")
+        self.btn_hl = QPushButton("Highlights")
         self.btn_hl.setCheckable(True)
         self.btn_hl.setChecked(True)
         self.btn_hl.setToolTip("Toggle Square Highlights (Ctrl+Alt+H)")
         self.btn_hl.clicked.connect(self.on_toggle_highlights)
-        self._style_button(self.btn_hl, active_bg="#30363d", active_color="#c9d1d9")
+        self._style_button(self.btn_hl)
         pill_layout.addWidget(self.btn_hl)
 
         # Calibrate
-        self.btn_cal = QPushButton("🎯 Calibrate")
+        self.btn_cal = QPushButton("Calibrate")
         self.btn_cal.setToolTip("Recalibrate Board Region (Ctrl+Alt+C)")
         self.btn_cal.clicked.connect(self.on_recalibrate)
-        self._style_button(self.btn_cal, active_bg="#9e6a03", active_color="#ffffff")
+        self._style_button(self.btn_cal)
         pill_layout.addWidget(self.btn_cal)
 
         # Close
-        btn_close = QPushButton("✕")
-        btn_close.setFixedSize(22, 22)
+        btn_close = QPushButton("Close")
         btn_close.setToolTip("Close Visualizer (Ctrl+Alt+Q)")
-        btn_close.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                color: #6e7681;
-                border: none;
-                border-radius: 4px;
-                font-size: 11px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: rgba(248, 81, 73, 40);
-                color: #f85149;
-            }
-        """)
+        self._style_button(btn_close)
         btn_close.clicked.connect(self.on_close)
         pill_layout.addWidget(btn_close)
 
@@ -186,61 +166,45 @@ class ControlBar(QWidget):
         show_highlights: bool,
         flipped: bool,
     ) -> None:
-        # Master toggle
         self.btn_master.setChecked(overlay_visible)
-        self.btn_master.setText("👁 ON" if overlay_visible else "👁 OFF")
-        self._style_button(
-            self.btn_master,
-            active_bg="#1f6feb" if overlay_visible else "#21262d",
-            active_color="#ffffff" if overlay_visible else "#6e7681",
-        )
-
-        # Player & Enemy
         self.btn_player.setChecked(show_player)
         self.btn_enemy.setChecked(show_enemy)
-        if not flipped:
-            self.btn_player.setText("🔵 White")
-            self.btn_enemy.setText("🔴 Black")
-            self.btn_flip.setText("🔄 White")
-        else:
-            self.btn_player.setText("🔵 Black")
-            self.btn_enemy.setText("🔴 White")
-            self.btn_flip.setText("🔄 Black")
-
-        # Defend
         self.btn_defense.setChecked(show_defense)
-
-        # Highlights
         self.btn_hl.setChecked(show_highlights)
 
     def position_above_board(self, left: int, top: int, width: int) -> None:
         """Position the control bar centered right above the board."""
         bar_w = self.sizeHint().width()
         bar_x = max(10, left + (width - bar_w) // 2)
-        bar_y = max(8, top - 48)
+        bar_y = max(8, top - 44)
         self.move(bar_x, bar_y)
 
-    def _style_button(self, btn: QPushButton, active_bg: str, active_color: str) -> None:
-        btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: rgba(255, 255, 255, 10);
-                color: #8b949e;
-                border: 1px solid rgba(255, 255, 255, 20);
-                border-radius: 6px;
-                padding: 4px 10px;
+    def _style_button(self, btn: QPushButton) -> None:
+        btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #8b929e;
+                border: 1px solid rgba(255, 255, 255, 18);
+                border-radius: 4px;
+                padding: 3px 8px;
                 font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 18);
+                color: #e6edf3;
+                border-color: rgba(255, 255, 255, 35);
+            }
+            QPushButton:checked {
+                background-color: rgba(255, 255, 255, 28);
+                border-color: rgba(255, 255, 255, 50);
+                color: #ffffff;
                 font-weight: 600;
-            }}
-            QPushButton:hover {{
-                background-color: rgba(255, 255, 255, 25);
-                color: #c9d1d9;
-                border-color: rgba(255, 255, 255, 40);
-            }}
-            QPushButton:checked {{
-                background-color: {active_bg};
-                border-color: {active_bg};
-                color: {active_color};
-            }}
+            }
+            QPushButton:pressed {
+                background-color: rgba(255, 255, 255, 38);
+                color: #ffffff;
+            }
         """)
 
     # -------------------------------------------------------------------------
