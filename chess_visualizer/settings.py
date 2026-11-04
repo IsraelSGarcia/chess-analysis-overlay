@@ -27,7 +27,6 @@ class Settings:
     show_highlights: bool = True
     show_defense: bool = True
     overlay_visible: bool = True
-    arrow_size_mode: str = "small"   # "small" or "medium"
     control_bar_pos: Optional[Tuple[int, int]] = None
     update_interval: float = 0.5
 

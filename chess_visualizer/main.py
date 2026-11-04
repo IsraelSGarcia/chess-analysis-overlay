@@ -3,7 +3,7 @@ main.py
 =======
 Chess Capture Visualizer — Main Orchestration Loop.
 
-Starts the live overlay, floating control bar, screen capture,
+Starts the live overlay, compact floating toolbar, screen capture,
 piece recognition, and capture calculator.
 """
 
@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Optional
 
 import chess
+from PySide6.QtCore import QObject, Signal, Slot, QTimer
+from PySide6.QtWidgets import QApplication
 
 # Configure file logging alongside console
 LOG_FILE = Path(__file__).parent.parent / "visualizer.log"
@@ -54,15 +56,24 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+class HotkeyBridge(QObject):
+    """Thread-safe bridge dispatching global hotkey events to Qt main thread."""
+    sig_toggle_master = Signal()
+    sig_toggle_player = Signal()
+    sig_toggle_enemy = Signal()
+    sig_toggle_defense = Signal()
+    sig_toggle_flip = Signal()
+    sig_toggle_hl = Signal()
+    sig_recalibrate = Signal()
+    sig_close = Signal()
+
+
 def main() -> None:
     _minimize_console()
     args = _parse_args()
 
     if args.log:
         logging.getLogger().setLevel(getattr(logging, args.log.upper(), logging.INFO))
-
-    from PySide6.QtWidgets import QApplication
-    from PySide6.QtCore import QTimer
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
@@ -102,7 +113,6 @@ def main() -> None:
             show_black=settings.show_black,
             show_highlights=settings.show_highlights,
             show_defense=settings.show_defense,
-            arrow_size_mode=settings.arrow_size_mode,
         )
 
     overlay = OverlayWidget(make_config())
@@ -116,12 +126,11 @@ def main() -> None:
                 show_enemy=settings.show_black,
                 show_defense=settings.show_defense,
                 show_highlights=settings.show_highlights,
-                arrow_size_mode=settings.arrow_size_mode,
                 flipped=settings.flipped,
             )
 
     # -------------------------------------------------------------------------
-    # Actions
+    # Actions (Executed safely on Qt main thread)
     # -------------------------------------------------------------------------
     def toggle_master():
         """Master toggle: Show / Hide overlay arrows and highlights."""
@@ -162,20 +171,6 @@ def main() -> None:
         overlay.set_config(make_config())
         refresh_ui_states()
 
-    def toggle_arrow_size():
-        settings.arrow_size_mode = "medium" if settings.arrow_size_mode == "small" else "small"
-        settings.save()
-        overlay.set_config(make_config())
-        refresh_ui_states()
-
-    def nudge_board(dx: int, dy: int):
-        if settings.board_region:
-            l, t, w, h = settings.board_region
-            settings.board_region = (l + dx, t + dy, w, h)
-            settings.save()
-            overlay.set_config(make_config())
-            trigger_immediate_update()
-
     def run_recalibrate():
         from chess_visualizer._calibration import CalibrationWidget
         overlay.hide()
@@ -210,7 +205,7 @@ def main() -> None:
         app.quit()
 
     # -------------------------------------------------------------------------
-    # Create ControlBar
+    # Create Compact ControlBar
     # -------------------------------------------------------------------------
     control_bar = ControlBar(
         on_toggle_master=toggle_master,
@@ -219,9 +214,7 @@ def main() -> None:
         on_toggle_defense=toggle_defense,
         on_flip=toggle_flip,
         on_toggle_highlights=toggle_highlights,
-        on_toggle_arrow_size=toggle_arrow_size,
         on_recalibrate=run_recalibrate,
-        on_nudge_board=nudge_board,
         on_close=close_app,
     )
     refresh_ui_states()
@@ -243,24 +236,30 @@ def main() -> None:
     control_bar.show()
 
     # -------------------------------------------------------------------------
-    # Global Hotkeys using 'keyboard' library
+    # Thread-Safe Global Hotkeys via Signal Bridge
+    # Conflict-free shortcuts: Ctrl+Alt+[Key]
     # -------------------------------------------------------------------------
+    bridge = HotkeyBridge()
+    bridge.sig_toggle_master.connect(toggle_master)
+    bridge.sig_toggle_player.connect(toggle_player)
+    bridge.sig_toggle_enemy.connect(toggle_enemy)
+    bridge.sig_toggle_defense.connect(toggle_defense)
+    bridge.sig_toggle_flip.connect(toggle_flip)
+    bridge.sig_toggle_hl.connect(toggle_highlights)
+    bridge.sig_recalibrate.connect(run_recalibrate)
+    bridge.sig_close.connect(close_app)
+
     try:
         import keyboard
-        # Easy Master Toggle: Ctrl+Space (no conflict with typing) and F1
-        keyboard.add_hotkey("ctrl+space", toggle_master, suppress=False)
-        keyboard.add_hotkey("f1", toggle_master, suppress=False)
-
-        # Dedicated key for every button
-        keyboard.add_hotkey("f2", run_recalibrate, suppress=False)
-        keyboard.add_hotkey("f3", toggle_player, suppress=False)
-        keyboard.add_hotkey("f4", toggle_enemy, suppress=False)
-        keyboard.add_hotkey("f5", toggle_defense, suppress=False)
-        keyboard.add_hotkey("f6", toggle_flip, suppress=False)
-        keyboard.add_hotkey("f7", toggle_highlights, suppress=False)
-        keyboard.add_hotkey("f8", toggle_arrow_size, suppress=False)
-        keyboard.add_hotkey("f9", close_app, suppress=False)
-        keyboard.add_hotkey("esc", close_app, suppress=False)
+        # Conflict-free shortcuts using Ctrl+Alt modifiers
+        keyboard.add_hotkey("ctrl+alt+x", bridge.sig_toggle_master.emit, suppress=False)
+        keyboard.add_hotkey("ctrl+alt+a", bridge.sig_toggle_player.emit, suppress=False)
+        keyboard.add_hotkey("ctrl+alt+s", bridge.sig_toggle_enemy.emit, suppress=False)
+        keyboard.add_hotkey("ctrl+alt+d", bridge.sig_toggle_defense.emit, suppress=False)
+        keyboard.add_hotkey("ctrl+alt+f", bridge.sig_toggle_flip.emit, suppress=False)
+        keyboard.add_hotkey("ctrl+alt+h", bridge.sig_toggle_hl.emit, suppress=False)
+        keyboard.add_hotkey("ctrl+alt+c", bridge.sig_recalibrate.emit, suppress=False)
+        keyboard.add_hotkey("ctrl+alt+q", bridge.sig_close.emit, suppress=False)
     except Exception as exc:
         logger.debug("Global keyboard hook failed: %s", exc)
 
@@ -289,8 +288,6 @@ def main() -> None:
         left, top, w, h = region
         frame = cap.grab_region(left, top, w, h)
         if frame is None:
-            if control_bar:
-                control_bar.set_status_text("⚠️ Capture: No frame", ok=False)
             return
 
         # Direct board recognition on the cropped board image
@@ -323,10 +320,6 @@ def main() -> None:
             w_count, b_count = len(captures["white"]), len(captures["black"])
             logger.info("Drawn %d White arrows, %d Black arrows (defense=%s)",
                         w_count, b_count, settings.show_defense)
-
-            if control_bar:
-                status = f"● Live • Conf: {conf_pct}% • {w_count} White, {b_count} Black"
-                control_bar.set_status_text(status, ok=True)
         except Exception as exc:
             logger.error("Capture calculation error: %s", exc)
 

@@ -20,8 +20,10 @@ class OverlayConfig:
     white_color: Tuple[int, int, int, int] = (45, 145, 255, 230)    # vibrant royal blue
     black_color: Tuple[int, int, int, int] = (245, 55,  55, 230)    # vibrant crimson red
 
-    # Arrow geometry
-    arrow_size_mode: str = "small"      # "small" or "medium"
+    # Small sleek arrow geometry
+    shaft_width_ratio: float = 0.045
+    head_length_ratio: float = 0.17
+    head_width_ratio:  float = 0.12
     opacity: float = 1.0
 
     overlay_visible: bool = True       # Master visibility toggle
@@ -36,15 +38,3 @@ class OverlayConfig:
     @property
     def square_size(self) -> int:
         return max(1, self.board_region[2] // 8)
-
-    @property
-    def shaft_width_ratio(self) -> float:
-        return 0.042 if self.arrow_size_mode == "small" else 0.068
-
-    @property
-    def head_length_ratio(self) -> float:
-        return 0.17 if self.arrow_size_mode == "small" else 0.24
-
-    @property
-    def head_width_ratio(self) -> float:
-        return 0.12 if self.arrow_size_mode == "small" else 0.17
