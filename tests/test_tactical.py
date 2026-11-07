@@ -1,0 +1,200 @@
+"""
+test_tactical.py
+================
+Unit tests for the standalone chess_tactical analytical engine:
+- Static Exchange Evaluation (SEE)
+- Attack and defense maps & square control
+- Pin & skewer detection
+- Hanging piece detection
+- Fork & discovered attack detection
+- Forcing sequence search
+"""
+
+import unittest
+import chess
+
+from chess_tactical import (
+    ExchangeCategory,
+    evaluate_exchange,
+    evaluate_all_captures,
+    AttackDefenseMap,
+    find_hanging_pieces,
+    scan_all_motifs,
+    find_forks,
+    find_skewers,
+    find_back_rank_weaknesses,
+    MotifType,
+    calculate_tactical_sequences,
+    generate_tactical_report,
+)
+
+
+class TestStaticExchangeEvaluation(unittest.TestCase):
+    """Test Static Exchange Evaluation (SEE) accuracy."""
+
+    def test_free_piece_capture(self):
+        # White Queen on e2 captures undefended Black Knight on e4
+        board = chess.Board("r1bqkb1r/pppp1ppp/2n5/4p3/4n3/8/PPPPQPPP/RNB1KBNR w KQkq - 0 1")
+        move = chess.Move.from_uci("e2e4")
+        result = evaluate_exchange(board, move)
+
+        self.assertTrue(result.is_favorable)
+        self.assertEqual(result.category, ExchangeCategory.FREE_PIECE)
+        self.assertGreaterEqual(result.score, 300)
+
+    def test_losing_exchange(self):
+        # White Knight on f3 captures defended Black Pawn on e5 (defended by d6 pawn)
+        board = chess.Board("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 1")
+        # Add pawn on d6 to defend e5
+        board.set_piece_at(chess.D6, chess.Piece(chess.PAWN, chess.BLACK))
+        move = chess.Move.from_uci("f3e5")
+        result = evaluate_exchange(board, move)
+
+        self.assertTrue(result.is_dangerous)
+        self.assertEqual(result.category, ExchangeCategory.LOSING)
+        self.assertLess(result.score, -100)
+
+    def test_equal_trade(self):
+        # White Bishop on b5 captures Black Knight on c6 defended by b7 pawn
+        board = chess.Board("r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 1")
+        move = chess.Move.from_uci("b5c6")
+        result = evaluate_exchange(board, move)
+
+        # Bishop (330) traded for Knight (305) -> net delta is roughly -25 cp (equal trade)
+        self.assertTrue(result.is_equal)
+        self.assertIn("bxc6", result.sequence)
+
+    def test_en_passant_see(self):
+        # White pawn on e5, Black pawn just moved d7-d5
+        board = chess.Board("rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2")
+        move = chess.Move.from_uci("e5d6")
+        result = evaluate_exchange(board, move)
+
+        # Black pawn on d5 was free, or defended by c7/e7/Qd8
+        self.assertEqual(result.target_piece_type, chess.PAWN)
+        self.assertIn("exd6", result.sequence)
+
+
+class TestAttackDefenseMap(unittest.TestCase):
+    """Test attack/defense tracking, pins, and discovered attacks."""
+
+    def test_attack_and_defense_counts(self):
+        # Starting position: e4 square is attacked by White (Bf1, Ng1 if moved, etc.)
+        board = chess.Board("r1bqk2r/pppp1ppp/2n5/4p3/1bB1P1n1/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 1")
+        am = AttackDefenseMap(board)
+
+        # e4 is defended by White Knight c3 and White Pawn d3
+        self.assertIn(chess.C3, am.squares[chess.E4].white_attackers)
+        self.assertIn(chess.D3, am.squares[chess.E4].white_attackers)
+
+    def test_absolute_pin_detection(self):
+        # Black Bishop on b4 pins White Knight on c3 to White King on e1
+        board = chess.Board("r1bqk2r/pppp1ppp/5n2/4p3/1b2P3/2NP4/PPP1BPPP/R1BQK2R b KQkq - 0 1")
+        am = AttackDefenseMap(board)
+
+        # Pin should be identified
+        pins = [p for p in am.pins if p.pinned_square == chess.C3 and p.is_absolute]
+        self.assertEqual(len(pins), 1)
+        self.assertEqual(pins[0].pinner_square, chess.B4)
+        self.assertEqual(pins[0].shielded_square, chess.E1)
+
+    def test_relative_pin_detection(self):
+        # White Bishop on g5 pins Black Knight on f6 to Black Queen on d8
+        board = chess.Board("rnbqkb1r/pppp1ppp/5n2/4p1B1/4P3/3P4/PPP2PPP/RN1QKBNR b KQkq - 0 1")
+        am = AttackDefenseMap(board)
+
+        pins = [p for p in am.pins if p.pinned_square == chess.F6 and not p.is_absolute]
+        self.assertEqual(len(pins), 1)
+        self.assertEqual(pins[0].pinner_square, chess.G5)
+        self.assertEqual(pins[0].shielded_square, chess.D8)
+
+
+class TestHangingPieces(unittest.TestCase):
+    """Test detection of genuinely hanging pieces."""
+
+    def test_undefended_hanging_piece(self):
+        # Black Knight on e4 is completely undefended and attacked by White Queen on e2
+        board = chess.Board("r1bqkb1r/pppp1ppp/2n5/4p3/4n3/8/PPPPQPPP/RNB1KBNR w KQkq - 0 1")
+        hanging = find_hanging_pieces(board, color=chess.BLACK)
+
+        self.assertEqual(len(hanging), 1)
+        self.assertEqual(hanging[0].square, chess.E4)
+        self.assertTrue(hanging[0].is_undefended)
+        self.assertTrue(hanging[0].is_tactically_vulnerable)
+
+    def test_defended_piece_not_hanging(self):
+        # 1. e4 e5 2. Nf3 Nc6 -> Black pawn on e5 defended by Nc6
+        board = chess.Board("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 1")
+        hanging = find_hanging_pieces(board, color=chess.BLACK)
+
+        # e5 should NOT be reported as hanging
+        e5_hanging = [h for h in hanging if h.square == chess.E5]
+        self.assertEqual(len(e5_hanging), 0)
+
+
+class TestTacticalMotifs(unittest.TestCase):
+    """Test tactical pattern recognition."""
+
+    def test_knight_fork(self):
+        # White Knight on c7 forks Black Rook on a8 and King on e8
+        board = chess.Board("r1b1k2r/ppNp1ppp/8/4p3/1b2P3/3P1N2/PPPB1PPP/R3KB1R b KQkq - 0 1")
+        am = AttackDefenseMap(board)
+        forks = find_forks(board, am)
+
+        self.assertTrue(any(f.source_square == chess.C7 for f in forks))
+
+    def test_skewer(self):
+        # White Rook on e1 skewers Black King on e5 in front of Black Queen on e7
+        board = chess.Board("8/4q3/8/4k3/8/8/8/4R1K1 w - - 0 1")
+        skewers = find_skewers(board)
+
+        self.assertEqual(len(skewers), 1)
+        self.assertEqual(skewers[0].source_square, chess.E1)
+        self.assertEqual(skewers[0].target_squares, (chess.E5, chess.E7))
+
+    def test_back_rank_weakness(self):
+        # Black King on g8 behind f7, g7, h7 pawns, White Rook on a1 can infiltrate
+        board = chess.Board("6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1")
+        weaknesses = find_back_rank_weaknesses(board)
+
+        self.assertTrue(len(weaknesses) >= 1)
+        self.assertEqual(weaknesses[0].target_squares, (chess.G8,))
+
+
+class TestForcingTacticalSearch(unittest.TestCase):
+    """Test forcing move tactical calculations."""
+
+    def test_back_rank_mate_in_one(self):
+        board = chess.Board("6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1")
+        seqs = calculate_tactical_sequences(board, color=chess.WHITE, max_depth=3)
+
+        self.assertTrue(len(seqs) >= 1)
+        self.assertTrue(seqs[0].is_mate)
+        self.assertEqual(seqs[0].root_move, chess.Move.from_uci("a1a8"))
+
+    def test_scholar_mate(self):
+        # 1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 ?? Qxf7#
+        board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 0 1")
+        seqs = calculate_tactical_sequences(board, color=chess.WHITE, max_depth=3)
+
+        self.assertTrue(len(seqs) >= 1)
+        self.assertEqual(seqs[0].root_move, chess.Move.from_uci("h5f7"))
+        self.assertTrue(seqs[0].is_mate)
+
+
+class TestTacticalReport(unittest.TestCase):
+    """Test the integrated TacticalReport."""
+
+    def test_full_report_generation(self):
+        board = chess.Board("r1bqk2r/pppp1ppp/2n5/4p3/1bB1P1n1/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 1")
+        report = generate_tactical_report(board, search_depth=3)
+
+        self.assertIsNotNone(report.attack_map)
+        self.assertIn(chess.WHITE, report.captures)
+        self.assertIn(chess.BLACK, report.captures)
+        self.assertIsInstance(report.summary_lines(), list)
+        self.assertGreater(len(report.summary_lines()), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

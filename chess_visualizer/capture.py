@@ -3,6 +3,17 @@ capture.py
 ==========
 Robust screen capture for Windows with High-DPI scaling and black-frame detection.
 
+SCREEN CAPTURE ISOLATION INVARIANT:
+----------------------------------
+Under no circumstances may any visualizer overlay, HUD, toolbar, or annotation
+appear in captured screen frames.
+All UI widgets rendered on top of the desktop MUST have WDA_EXCLUDEFROMCAPTURE
+set on their native Windows handles so the Windows Desktop Window Manager (DWM)
+compositor removes them from all capture pipelines (PIL ImageGrab, mss, DirectX).
+If the overlay were captured, the neural-network piece classifier and highlight
+detector would see the visualizer's own drawn arrows, brackets, and colors, causing
+fatal self-detection feedback loops (flickering, turn toggling, evaluation cycling).
+
 Backends:
 1. PIL.ImageGrab.grab(bbox) - standard, captures DirectX/hardware accelerated browsers.
 2. mss - fast DirectX/GDI capture.
@@ -11,13 +22,63 @@ Backends:
 
 from __future__ import annotations
 
+import ctypes
 import logging
+import sys
 from typing import Optional, Tuple
 
 import numpy as np
 from PIL import Image
 
 logger = logging.getLogger(__name__)
+
+# Windows DWM Window Display Affinity Constants
+WDA_NONE = 0x00000000
+WDA_MONITOR = 0x00000001
+WDA_EXCLUDEFROMCAPTURE = 0x00000011
+
+
+def set_window_capture_exclusion(window) -> bool:
+    """
+    Exclude a window from all screen captures using the Windows DWM API.
+
+    Guarantees that screen capture backends (PIL ImageGrab, mss, DirectX)
+    read only the authentic underlying desktop and chessboard, completely
+    ignoring overlay annotations, arrows, and highlights.
+
+    Parameters
+    ----------
+    window : QWidget or int
+        The PySide6 QWidget or native HWND to exclude from capture.
+
+    Returns
+    -------
+    bool
+        True if WDA_EXCLUDEFROMCAPTURE was successfully applied, False otherwise.
+    """
+    if sys.platform != "win32":
+        return False
+
+    try:
+        if hasattr(window, "winId"):
+            hwnd = int(window.winId())
+        else:
+            hwnd = int(window)
+
+        if not hwnd:
+            return False
+
+        res = ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
+        if res != 0:
+            logger.debug("Successfully applied WDA_EXCLUDEFROMCAPTURE to HWND %s", hwnd)
+            return True
+        else:
+            err = ctypes.GetLastError()
+            logger.warning("SetWindowDisplayAffinity returned 0 (GetLastError: %s) for HWND %s", err, hwnd)
+            return False
+    except Exception as exc:
+        logger.warning("Failed to apply capture exclusion to window: %s", exc)
+        return False
 
 
 def is_black_image(img: Optional[Image.Image]) -> bool:
@@ -121,6 +182,34 @@ class ScreenCapture:
 
     def release(self) -> None:
         pass
+
+    def grab_fullscreen(self) -> Optional[Tuple[Image.Image, int, int]]:
+        """
+        Capture the entire primary display.
+        Returns (PIL.Image.Image in RGB, geo_left, geo_top) or None.
+        """
+        try:
+            from PySide6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app:
+                screen = app.primaryScreen()
+                if screen:
+                    geo = screen.geometry()
+                    img = self.grab_region(geo.x(), geo.y(), geo.width(), geo.height())
+                    if img:
+                        return img, geo.x(), geo.y()
+        except Exception as exc:
+            logger.debug("grab_fullscreen Qt failed: %s", exc)
+
+        try:
+            from PIL import ImageGrab
+            img = ImageGrab.grab(all_screens=False)
+            if img and not is_black_image(img):
+                return img.convert("RGB"), 0, 0
+        except Exception as exc:
+            logger.debug("grab_fullscreen ImageGrab failed: %s", exc)
+
+        return None
 
     def __enter__(self):
         return self

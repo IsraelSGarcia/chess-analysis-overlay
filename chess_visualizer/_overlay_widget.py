@@ -31,15 +31,21 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
+from chess_tactical.motifs import MotifType
+from chess_visualizer.capture import set_window_capture_exclusion
+
 logger = logging.getLogger(__name__)
-
-WDA_EXCLUDEFROMCAPTURE = 0x00000011
-
 
 class OverlayWidget(QWidget):
     """
     Transparent, click-through, always-on-top window drawing capture
     arrows and square highlights on top of the chessboard.
+
+    SCREEN CAPTURE ISOLATION INVARIANT:
+    ----------------------------------
+    This widget MUST maintain WDA_EXCLUDEFROMCAPTURE at all times so that
+    screen capture reads clean desktop pixels beneath it without any overlay
+    annotations, arrows, or brackets.
     """
 
     def __init__(self, config) -> None:
@@ -47,8 +53,10 @@ class OverlayWidget(QWidget):
         self._config = config
         self._white_captures: list = []
         self._black_captures: list = []
+        self._tactical_report = None
         self._board_flipped: bool = False
         self._status: str = ""
+        self._capture_excluded: bool = False
         self._setup_window()
 
     def _setup_window(self) -> None:
@@ -64,12 +72,28 @@ class OverlayWidget(QWidget):
 
         left, top, w, h = self._config.board_region
         self.setGeometry(left, top, w, h)
+        self._apply_capture_exclusion()
 
-        try:
-            hwnd = int(self.winId())
-            ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
-        except Exception as exc:
-            logger.debug("SetWindowDisplayAffinity failed: %s", exc)
+    def _apply_capture_exclusion(self) -> None:
+        """Enforce OS-level DWM exclusion so the overlay never contaminates screen captures."""
+        self._capture_excluded = set_window_capture_exclusion(self)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._apply_capture_exclusion()
+
+    @property
+    def is_capture_excluded(self) -> bool:
+        """True if the window is verified excluded from screen captures by Windows DWM."""
+        return self._capture_excluded
+
+    def clear(self) -> None:
+        """Clear all cached captures, tactical reports, and reset display."""
+        self._white_captures = []
+        self._black_captures = []
+        self._tactical_report = None
+        self._status = ""
+        self.update()
 
     def set_captures(self, white: list, black: list, board_flipped: bool | None = None, status: str = "") -> None:
         self._white_captures = white
@@ -77,6 +101,10 @@ class OverlayWidget(QWidget):
         if board_flipped is not None:
             self._board_flipped = board_flipped
         self._status = status
+        self.update()
+
+    def set_tactical_report(self, report) -> None:
+        self._tactical_report = report
         self.update()
 
     def set_board_flipped(self, board_flipped: bool) -> None:
@@ -91,7 +119,7 @@ class OverlayWidget(QWidget):
         self.update()
 
     # -------------------------------------------------------------------------
-    # Paint
+    # Paint (Distinct branches for Captures vs Tactics modes)
     # -------------------------------------------------------------------------
 
     def paintEvent(self, _) -> None:
@@ -101,12 +129,23 @@ class OverlayWidget(QWidget):
         if not cfg.overlay_visible:
             return
 
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        try:
+            p = QPainter(self)
+            p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
-        # Perspective awareness (who gets Blue vs Red):
-        # Default (White perspective): Player = White (Blue), Enemy = Black (Red)
-        # Flipped (Black perspective): Player = Black (Blue), Enemy = White (Red)
+            if cfg.mode == "tactics":
+                self._paint_tactics_mode(p)
+            else:
+                self._paint_captures_mode(p)
+
+            p.end()
+        except Exception as exc:
+            logger.error("Overlay paintEvent error: %s", exc)
+
+    def _paint_captures_mode(self, p: QPainter) -> None:
+        """The original Capture Visualizer: legal captures, defenses, and control highlights."""
+        cfg = self._config
+
         if not cfg.flipped:
             raw_player = self._white_captures
             raw_enemy  = self._black_captures
@@ -114,7 +153,6 @@ class OverlayWidget(QWidget):
             raw_player = self._black_captures
             raw_enemy  = self._white_captures
 
-        # Filter out defense moves if defense toggle is disabled
         if cfg.show_defense:
             player_moves = raw_player
             enemy_moves  = raw_enemy
@@ -122,22 +160,209 @@ class OverlayWidget(QWidget):
             player_moves = [m for m in raw_player if not getattr(m, 'is_defense', False)]
             enemy_moves  = [m for m in raw_enemy if not getattr(m, 'is_defense', False)]
 
-        # 1. Draw square highlights
+        # 1. Square highlights
         if cfg.show_highlights:
             self._draw_square_highlights(p, player_moves, enemy_moves)
 
-        # 2. Draw arrows (Blue for Player, Red for Enemy)
-        if cfg.show_white:  # Player toggle
+        # 2. Arrows (Blue for Player, Red for Enemy)
+        if cfg.show_white:
             self._draw_arrows(p, player_moves, QColor(*cfg.white_color))
 
-        if cfg.show_black:  # Enemy toggle
+        if cfg.show_black:
             self._draw_arrows(p, enemy_moves, QColor(*cfg.black_color))
 
-        # 3. HUD status text (optional)
+        # 3. Status text
         if cfg.show_hud:
             self._draw_hud(p, len(player_moves), len(enemy_moves))
 
-        p.end()
+    def _draw_corner_brackets(
+        self,
+        p: QPainter,
+        rect: QRectF,
+        color: QColor,
+        bracket_len: float = 12.0,
+        pen_width: float = 2.5,
+    ) -> None:
+        """Draw tactical corner brackets [ ] around a square without occluding the piece center."""
+        x, y, w, h = rect.x(), rect.y(), rect.width(), rect.height()
+        blen = min(bracket_len, w * 0.32)
+        pen = QPen(color, pen_width, Qt.PenStyle.SolidLine, Qt.PenCapStyle.SquareCap)
+        p.setPen(pen)
+
+        # Top-Left
+        p.drawLine(QPointF(x, y + blen), QPointF(x, y))
+        p.drawLine(QPointF(x, y), QPointF(x + blen, y))
+
+        # Top-Right
+        p.drawLine(QPointF(x + w - blen, y), QPointF(x + w, y))
+        p.drawLine(QPointF(x + w, y), QPointF(x + w, y + blen))
+
+        # Bottom-Left
+        p.drawLine(QPointF(x, y + h - blen), QPointF(x, y + h))
+        p.drawLine(QPointF(x, y + h), QPointF(x + blen, y + h))
+
+        # Bottom-Right
+        p.drawLine(QPointF(x + w - blen, y + h), QPointF(x + w, y + h))
+        p.drawLine(QPointF(x + w, y + h), QPointF(x + w, y + h - blen))
+
+    def _paint_tactics_mode(self, p: QPainter) -> None:
+        """The Tactical Intelligence Overlay: Fork/Pin/Skewer arrows, Winning trades, Blunder alerts, Hanging pieces."""
+        cfg = self._config
+        rep = self._tactical_report
+
+        if not rep:
+            return
+
+        turn_color = rep.board.turn
+        enemy_color = chess.BLACK if turn_color == chess.WHITE else chess.WHITE
+
+        # ---------------------------------------------------------------------
+        # 1. Clean Tactical Accents (Hanging pieces & King check)
+        # ---------------------------------------------------------------------
+        try:
+            # Hanging pieces (Radiant Bright Orange #FF6D00: thin dashed perimeter & corner brackets)
+            for color_key in (chess.WHITE, chess.BLACK):
+                for h in rep.hanging.get(color_key, []):
+                    h_rect = self._get_square_rect(h.square)
+                    p.setPen(QPen(QColor(255, 109, 0, 200), 1.8, Qt.PenStyle.DashLine))
+                    p.drawRect(h_rect)
+                    self._draw_corner_brackets(p, h_rect, QColor(255, 109, 0, 240), bracket_len=10.0, pen_width=2.0)
+
+            # Tactical Motifs (Electric Purple #D500F9 corner brackets on target squares)
+            for m in rep.motifs:
+                for tgt_sq in m.target_squares:
+                    tgt_rect = self._get_square_rect(tgt_sq)
+                    self._draw_corner_brackets(p, tgt_rect, QColor(213, 0, 249, 190), bracket_len=9.0, pen_width=1.8)
+        except Exception as exc:
+            logger.debug("Tactical accents paint error: %s", exc)
+
+        # ---------------------------------------------------------------------
+        # 2. Every Single Blunder Move for Active Turn (Crimson Red #FF1744)
+        # ---------------------------------------------------------------------
+        try:
+            all_blunders = rep.blunders.get(turn_color, []) if hasattr(rep, 'blunders') else []
+            for b in all_blunders:
+                fx, fy = self._get_square_centre(b.move.from_square)
+                tx, ty = self._get_square_centre(b.move.to_square)
+                self._draw_single_arrow(p, fx, fy, tx, ty, QColor(255, 23, 68, 200), False, width_mult=0.95)
+        except Exception as exc:
+            logger.debug("Blunders paint error: %s", exc)
+
+        # ---------------------------------------------------------------------
+        # 3. Direct Threat & Attack Arrows on Hanging Pieces (Radiant Orange #FF6D00)
+        # ---------------------------------------------------------------------
+        try:
+            # Undefended friendly pieces: arrows from enemy attackers
+            for h in rep.hanging.get(turn_color, []):
+                att_list = getattr(h, 'attackers', getattr(h, 'attacker_squares', []))
+                for att_sq in att_list:
+                    fx, fy = self._get_square_centre(att_sq)
+                    tx, ty = self._get_square_centre(h.square)
+                    self._draw_single_arrow(p, fx, fy, tx, ty, QColor(255, 109, 0, 230), False, width_mult=1.1)
+
+            # Undefended enemy pieces: arrows from friendly attackers
+            for eh in rep.hanging.get(enemy_color, []):
+                att_list = getattr(eh, 'attackers', getattr(eh, 'attacker_squares', []))
+                for att_sq in att_list:
+                    piece = rep.board.piece_at(att_sq)
+                    if piece and piece.color == turn_color:
+                        fx, fy = self._get_square_centre(att_sq)
+                        tx, ty = self._get_square_centre(eh.square)
+                        self._draw_single_arrow(p, fx, fy, tx, ty, QColor(255, 109, 0, 190), False, width_mult=1.0)
+        except Exception as exc:
+            logger.debug("Hanging pieces paint error: %s", exc)
+
+        # ---------------------------------------------------------------------
+        # 4. Tactical Motif Arrows (Forks, Pins, Skewers, Discovered Attacks, Overloaded Defenders)
+        # ---------------------------------------------------------------------
+        try:
+            for m in rep.motifs:
+                fx, fy = self._get_square_centre(m.source_square)
+                if m.motif_type == MotifType.FORK:
+                    for tgt_sq in m.target_squares:
+                        tx, ty = self._get_square_centre(tgt_sq)
+                        self._draw_single_arrow(p, fx, fy, tx, ty, QColor(213, 0, 249, 245), False, width_mult=1.25)
+
+                elif m.motif_type in (MotifType.ABSOLUTE_PIN, MotifType.RELATIVE_PIN):
+                    # Pinner attacks pinned piece (solid), continuing through to shielded King/Queen (dashed line of fire)
+                    if len(m.target_squares) >= 2:
+                        pinned_sq, shielded_sq = m.target_squares[0], m.target_squares[1]
+                        px, py = self._get_square_centre(pinned_sq)
+                        sx, sy = self._get_square_centre(shielded_sq)
+                        self._draw_single_arrow(p, fx, fy, px, py, QColor(213, 0, 249, 240), False, width_mult=1.2)
+                        self._draw_single_arrow(p, px, py, sx, sy, QColor(213, 0, 249, 190), False, width_mult=0.9, is_dashed=True)
+                    elif m.target_squares:
+                        tx, ty = self._get_square_centre(m.target_squares[0])
+                        self._draw_single_arrow(p, fx, fy, tx, ty, QColor(213, 0, 249, 230), False, width_mult=1.15)
+
+                elif m.motif_type == MotifType.SKEWER:
+                    # Skewer attacks front piece (solid), continuing through to rear piece (dashed)
+                    if len(m.target_squares) >= 2:
+                        front_sq, back_sq = m.target_squares[0], m.target_squares[1]
+                        fx_front, fy_front = self._get_square_centre(front_sq)
+                        bx_back, by_back = self._get_square_centre(back_sq)
+                        self._draw_single_arrow(p, fx, fy, fx_front, fy_front, QColor(213, 0, 249, 240), False, width_mult=1.2)
+                        self._draw_single_arrow(p, fx_front, fy_front, bx_back, by_back, QColor(213, 0, 249, 190), False, width_mult=0.9, is_dashed=True)
+                    elif m.target_squares:
+                        tx, ty = self._get_square_centre(m.target_squares[0])
+                        self._draw_single_arrow(p, fx, fy, tx, ty, QColor(213, 0, 249, 230), False, width_mult=1.15)
+
+                elif m.motif_type in (MotifType.DISCOVERED_ATTACK, MotifType.DISCOVERED_CHECK):
+                    # In discovered attacks: target_squares=(slider_square, target_square), source_square=masking_square
+                    if len(m.target_squares) >= 2:
+                        slider_sq, tgt_sq = m.target_squares[0], m.target_squares[1]
+                        sx, sy = self._get_square_centre(slider_sq)
+                        tx, ty = self._get_square_centre(tgt_sq)
+                        # Dashed unveiled ray from slider to target
+                        self._draw_single_arrow(p, sx, sy, tx, ty, QColor(213, 0, 249, 220), False, width_mult=1.15, is_dashed=True)
+                        # Corner brackets highlighting the masking piece that should step away
+                        mask_rect = self._get_square_rect(m.source_square)
+                        self._draw_corner_brackets(p, mask_rect, QColor(213, 0, 249, 235), bracket_len=11.0, pen_width=2.2)
+
+                elif m.motif_type == MotifType.OVERLOADED_DEFENDER:
+                    # Overloaded piece is source_square; draw dashed defense connections to its defended pieces
+                    for tgt_sq in m.target_squares:
+                        tx, ty = self._get_square_centre(tgt_sq)
+                        self._draw_single_arrow(p, fx, fy, tx, ty, QColor(0, 176, 255, 210), True, width_mult=0.9, is_dashed=True)
+                    ov_rect = self._get_square_rect(m.source_square)
+                    self._draw_corner_brackets(p, ov_rect, QColor(0, 176, 255, 240), bracket_len=10.0, pen_width=2.0)
+
+                elif m.motif_type == MotifType.BACK_RANK_WEAKNESS:
+                    # Infiltrating piece attacking the back rank towards the King
+                    for tgt_sq in m.target_squares:
+                        tx, ty = self._get_square_centre(tgt_sq)
+                        self._draw_single_arrow(p, fx, fy, tx, ty, QColor(255, 23, 68, 220), False, width_mult=1.2)
+        except Exception as exc:
+            logger.debug("Motifs paint error: %s", exc)
+
+        # ---------------------------------------------------------------------
+        # 5. Calculated Forcing Sequence Key Moves (Vibrant Gold #FFD600)
+        # ---------------------------------------------------------------------
+        try:
+            seqs = rep.forcing_sequences.get(turn_color, []) if hasattr(rep, 'forcing_sequences') else []
+            if seqs and seqs[0].moves:
+                key_move = seqs[0].moves[0]
+                # If key move is not already a favorable capture (which gets a bold green arrow),
+                # highlight the breakthrough move with a gold arrow
+                fav_moves = {ex.move for ex in rep.favorable_captures(turn_color)}
+                if key_move not in fav_moves and seqs[0].score > 100:
+                    kx1, ky1 = self._get_square_centre(key_move.from_square)
+                    kx2, ky2 = self._get_square_centre(key_move.to_square)
+                    self._draw_single_arrow(p, kx1, ky1, kx2, ky2, QColor(255, 214, 0, 245), False, width_mult=1.3)
+        except Exception as exc:
+            logger.debug("Forcing sequence paint error: %s", exc)
+
+        # ---------------------------------------------------------------------
+        # 6. Winning Trades for Active Turn (Vivid Emerald Green #00E676: SEE > 0)
+        # ---------------------------------------------------------------------
+        try:
+            fav_captures = rep.favorable_captures(turn_color)
+            for ex in fav_captures:
+                fx, fy = self._get_square_centre(ex.move.from_square)
+                tx, ty = self._get_square_centre(ex.move.to_square)
+                self._draw_single_arrow(p, fx, fy, tx, ty, QColor(0, 230, 118, 255), False, width_mult=1.35)
+        except Exception as exc:
+            logger.debug("Winning trades paint error: %s", exc)
 
     # -------------------------------------------------------------------------
     # Square Highlights
@@ -184,10 +409,11 @@ class OverlayWidget(QWidget):
             p.drawRect(rect)
 
     # -------------------------------------------------------------------------
-    # Arrows
+    # Arrows (Legal Captures Mode)
     # -------------------------------------------------------------------------
 
     def _draw_arrows(self, p: QPainter, captures: list, color: QColor) -> None:
+        cfg = self._config
         targets_count: Dict[int, int] = {}
         targets_index: Dict[int, int] = {}
         for c in captures:
@@ -212,7 +438,10 @@ class OverlayWidget(QWidget):
                     tx += (-dy / dist) * fan_offset
                     ty += (dx / dist) * fan_offset
 
-            self._draw_single_arrow(p, fx, fy, tx, ty, color, getattr(c, 'is_defense', False))
+            is_def = getattr(c, 'is_defense', False)
+            arrow_color = QColor(41, 121, 255, 190) if is_def else color
+
+            self._draw_single_arrow(p, fx, fy, tx, ty, arrow_color, is_def)
 
     def _draw_single_arrow(
         self,
@@ -221,6 +450,8 @@ class OverlayWidget(QWidget):
         x2: float, y2: float,
         color: QColor,
         is_defense: bool,
+        width_mult: float = 1.0,
+        is_dashed: bool = False,
     ) -> None:
         cfg = self._config
         sq = min(self.width(), self.height()) / 8.0
@@ -233,28 +464,20 @@ class OverlayWidget(QWidget):
         ux, uy = dx / length, dy / length
         px, py = -uy, ux
 
-        shaft_half = max(1.5, sq * cfg.shaft_width_ratio / 2.0)
-        head_len = max(6.0, sq * cfg.head_length_ratio)
-        head_half = max(4.0, sq * cfg.head_width_ratio / 2.0)
+        shaft_half = max(1.5, sq * cfg.shaft_width_ratio / 2.0 * width_mult)
+        head_len = max(6.0, sq * cfg.head_length_ratio * width_mult)
+        head_half = max(4.0, sq * cfg.head_width_ratio / 2.0 * width_mult)
 
-        # Start arrow away from piece center
-        start_offset = sq * 0.20
+        # Start arrow away from piece center so piece remains visible
+        start_offset = sq * 0.26
         sx, sy = x1 + ux * start_offset, y1 + uy * start_offset
 
-        # End arrow near square center
-        end_offset = sq * 0.12
+        # End arrow before target center so target piece glyph remains visible
+        end_offset = sq * 0.24
         target_x, target_y = x2 - ux * end_offset, y2 - uy * end_offset
 
         shaft_end_x = target_x - ux * head_len
         shaft_end_y = target_y - uy * head_len
-
-        # Shaft polygon
-        shaft_poly = QPolygonF([
-            QPointF(sx + px * shaft_half, sy + py * shaft_half),
-            QPointF(shaft_end_x + px * shaft_half, shaft_end_y + py * shaft_half),
-            QPointF(shaft_end_x - px * shaft_half, shaft_end_y - py * shaft_half),
-            QPointF(sx - px * shaft_half, sy - py * shaft_half),
-        ])
 
         # Arrowhead polygon
         head_poly = QPolygonF([
@@ -263,14 +486,38 @@ class OverlayWidget(QWidget):
             QPointF(shaft_end_x - px * head_half, shaft_end_y - py * head_half),
         ])
 
-        # Small origin dot
-        origin_radius = max(2.5, sq * 0.05)
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QBrush(color))
-        p.drawEllipse(QPointF(sx, sy), origin_radius, origin_radius)
+        if is_dashed:
+            # Dashed X-Ray line of fire for pins & skewers
+            dash_pen = QPen(color, max(2.0, shaft_half * 1.8), Qt.PenStyle.DashLine, Qt.PenCapStyle.RoundCap)
+            p.setPen(dash_pen)
+            p.drawLine(QPointF(sx, sy), QPointF(shaft_end_x, shaft_end_y))
 
-        p.drawPolygon(shaft_poly)
-        p.drawPolygon(head_poly)
+            # Arrowhead with dark border
+            outline_pen = QPen(QColor(10, 14, 20, 220), 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+            p.setPen(outline_pen)
+            p.setBrush(QBrush(color))
+            p.drawPolygon(head_poly)
+        else:
+            # Shaft polygon
+            shaft_poly = QPolygonF([
+                QPointF(sx + px * shaft_half, sy + py * shaft_half),
+                QPointF(shaft_end_x + px * shaft_half, shaft_end_y + py * shaft_half),
+                QPointF(shaft_end_x - px * shaft_half, shaft_end_y - py * shaft_half),
+                QPointF(sx - px * shaft_half, sy - py * shaft_half),
+            ])
+
+            # Origin dot
+            origin_radius = max(2.5, sq * 0.05 * width_mult)
+            p.setPen(QPen(QColor(10, 14, 20, 200), 1.0))
+            p.setBrush(QBrush(color))
+            p.drawEllipse(QPointF(sx, sy), origin_radius, origin_radius)
+
+            # High-contrast dark outline around the arrow
+            outline_pen = QPen(QColor(10, 14, 20, 220), 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+            p.setPen(outline_pen)
+            p.setBrush(QBrush(color))
+            p.drawPolygon(shaft_poly)
+            p.drawPolygon(head_poly)
 
     # -------------------------------------------------------------------------
     # HUD

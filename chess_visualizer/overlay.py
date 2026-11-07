@@ -27,11 +27,14 @@ class OverlayConfig:
     opacity: float = 1.0
 
     overlay_visible: bool = True       # Master visibility toggle
+    mode: str = "tactics"              # "tactics" or "captures"
     show_white: bool = True            # Player toggle
     show_black: bool = True            # Enemy toggle
     show_highlights: bool = True       # Square tints
     show_defense: bool = True          # Defending friendly pieces arrows
     show_hud: bool = False
+    show_tactical_arrows: bool = True       # Color code arrows by tactical evaluation (SEE)
+    show_tactical_highlights: bool = True   # Tactical square tints (hanging, motifs, checks)
 
     flipped: bool = False              # True when Black is at the bottom
 

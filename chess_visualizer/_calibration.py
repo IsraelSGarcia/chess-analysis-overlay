@@ -23,7 +23,7 @@ from PySide6.QtCore import Qt, QRect, QPoint
 from PySide6.QtGui import QPainter, QColor, QPen, QFont, QCursor
 from PySide6.QtWidgets import QApplication, QWidget
 
-from chess_visualizer.capture import ScreenCapture
+from chess_visualizer.capture import ScreenCapture, set_window_capture_exclusion
 from chess_visualizer.recognition import detect_chessboard_in_crop
 
 logger = logging.getLogger(__name__)
@@ -65,11 +65,7 @@ class CalibrationWidget(QWidget):
             self.setGeometry(screen.geometry())
 
         # Exclude this overlay from screen capture so grab_region sees clean desktop
-        try:
-            hwnd = int(self.winId())
-            ctypes.windll.user32.SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
-        except Exception as exc:
-            logger.debug("SetWindowDisplayAffinity failed: %s", exc)
+        set_window_capture_exclusion(self)
 
         self.showFullScreen()
         self.raise_()

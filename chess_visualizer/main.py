@@ -45,6 +45,162 @@ def _minimize_console() -> None:
         pass
 
 
+def is_valid_recognized_board(board: chess.Board) -> bool:
+    """
+    Validate that a recognized board has plausible chess piece counts.
+    Must contain exactly 1 White King, 1 Black King, <= 16 pieces per side,
+    <= 8 pawns per side, and no pawns on the back ranks (rank 1 or rank 8).
+    Prevents false-positive flickering on arbitrary desktop windows and
+    guards against misaligned crop corruption.
+    """
+    piece_map = board.piece_map()
+    pieces = list(piece_map.values())
+    if len(pieces) < 2:
+        return False
+
+    white_kings = sum(1 for p in pieces if p.piece_type == chess.KING and p.color == chess.WHITE)
+    black_kings = sum(1 for p in pieces if p.piece_type == chess.KING and p.color == chess.BLACK)
+    if white_kings != 1 or black_kings != 1:
+        return False
+
+    white_pieces = sum(1 for p in pieces if p.color == chess.WHITE)
+    black_pieces = sum(1 for p in pieces if p.color == chess.BLACK)
+    if white_pieces > 16 or black_pieces > 16:
+        return False
+
+    white_pawns = sum(1 for p in pieces if p.piece_type == chess.PAWN and p.color == chess.WHITE)
+    black_pawns = sum(1 for p in pieces if p.piece_type == chess.PAWN and p.color == chess.BLACK)
+    if white_pawns > 8 or black_pawns > 8:
+        return False
+
+    for sq, p in piece_map.items():
+        if p.piece_type == chess.PAWN:
+            rank = chess.square_rank(sq)
+            if rank == 0 or rank == 7:
+                return False
+
+    return True
+
+
+def _generate_candidate_moves(board: chess.Board):
+    """Generate all legal moves, explicitly considering potential en-passant opportunities."""
+    yield from board.legal_moves
+    rank = 4 if board.turn == chess.WHITE else 3
+    ep_dest_rank = 5 if board.turn == chess.WHITE else 2
+    for file in range(8):
+        sq = chess.square(file, rank)
+        p = board.piece_at(sq)
+        if p and p.piece_type == chess.PAWN and p.color == board.turn:
+            for adj_file in (file - 1, file + 1):
+                if 0 <= adj_file <= 7:
+                    adj_sq = chess.square(adj_file, rank)
+                    adj_p = board.piece_at(adj_sq)
+                    if adj_p and adj_p.piece_type == chess.PAWN and adj_p.color != board.turn:
+                        b_ep = board.copy(stack=False)
+                        b_ep.ep_square = chess.square(adj_file, ep_dest_rank)
+                        for m in b_ep.legal_moves:
+                            if m.from_square == sq and m.to_square == b_ep.ep_square:
+                                yield m
+
+
+def determine_turn_from_move(prev_board: chess.Board, new_board: chess.Board) -> Optional[chess.Color]:
+    """
+    Given consecutive board positions, determine whose turn it is now based on whether
+    a forward move was played or a previous move was undone.
+
+    Returns
+    -------
+    chess.BLACK / chess.WHITE:
+        - If a forward move was played by White, returns chess.BLACK (and vice versa).
+        - If a previous move by White was undone/reversed, returns chess.WHITE (and vice versa).
+    None:
+        If no single legal transition was identified (e.g. multi-move navigation, reset, or dots).
+    """
+    prev_map = prev_board.piece_map()
+    new_map = new_board.piece_map()
+
+    if prev_map == new_map:
+        return None
+
+    # Check forward move from prev_board (only prev_board.turn can move forward)
+    p_test = prev_board.copy(stack=False)
+    p_test.turn = prev_board.turn
+    for m in _generate_candidate_moves(p_test):
+        test = p_test.copy(stack=False)
+        test.push(m)
+        if test.piece_map() == new_map:
+            return not prev_board.turn
+
+    # Check undo / reverse move from new_board to prev_board
+    # In new_board, mover_turn played m to reach prev_board -> in new_board, it is mover_turn's turn!
+    for mover_turn in (not prev_board.turn, prev_board.turn):
+        n_test = new_board.copy(stack=False)
+        n_test.turn = mover_turn
+        for m in _generate_candidate_moves(n_test):
+            test = n_test.copy(stack=False)
+            test.push(m)
+            if test.piece_map() == prev_map:
+                return mover_turn
+
+    # Fallback to piece diff heuristic if legal moves didn't match (e.g. board crop slight offset)
+    prev_w = {sq: p for sq, p in prev_map.items() if p.color == chess.WHITE}
+    new_w = {sq: p for sq, p in new_map.items() if p.color == chess.WHITE}
+    prev_b = {sq: p for sq, p in prev_map.items() if p.color == chess.BLACK}
+    new_b = {sq: p for sq, p in new_map.items() if p.color == chess.BLACK}
+
+    w_vacated = set(prev_w.keys()) - set(new_w.keys())
+    b_vacated = set(prev_b.keys()) - set(new_b.keys())
+    w_new_squares = set(new_w.keys()) - set(prev_w.keys())
+    b_new_squares = set(new_b.keys()) - set(prev_b.keys())
+
+    white_moved = bool(w_vacated) and bool(w_new_squares) and not b_new_squares
+    black_moved = bool(b_vacated) and bool(b_new_squares) and not w_new_squares
+
+    if white_moved and not black_moved:
+        return chess.BLACK
+    elif black_moved and not white_moved:
+        return chess.WHITE
+
+    return None
+
+
+def sanitize_board_transition(prev_board: chess.Board, new_board: chess.Board) -> chess.Board:
+    """
+    Ensure physical board state continuity between consecutive frames.
+
+    In chess, pieces NEVER spontaneously materialize on empty squares without
+    a corresponding piece leaving an origin square. When a user clicks a piece
+    on Chess.com / Lichess, move indicator dots on destination squares can occasionally
+    be misclassified as pawns. If new pieces appear while every single established piece
+    from prev_board remains on its exact square, those newly added pieces are identified
+    as click/move dot artifacts and purged.
+    """
+    prev_map = prev_board.piece_map()
+    new_map = new_board.piece_map()
+
+    if prev_map == new_map:
+        return new_board
+
+    # Check for phantom move dot spawn:
+    # All established pieces from prev_board are still present on their exact squares,
+    # but 1 to 6 extra pieces appeared on previously empty squares (e.g. piece clicked).
+    if all(new_map.get(sq) == p for sq, p in prev_map.items()):
+        newly_added = set(new_map.keys()) - set(prev_map.keys())
+        if 0 < len(newly_added) <= 6:
+            clean_board = new_board.copy()
+            for sq in newly_added:
+                clean_board.remove_piece_at(sq)
+            logger.debug(
+                "Sanitized impossible piece spawn on empty squares %s (click/move dot artifacts)",
+                [chess.square_name(s) for s in newly_added],
+            )
+            return clean_board
+
+    # In all other cases (forward moves, capture undos, castling, promotions, navigation),
+    # the new_board piece placements are authentic and must NEVER be deleted.
+    return new_board
+
+
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Live Chess Capture Visualizer")
     p.add_argument("--fen", type=str, default=None, help="Static FEN mode")
@@ -59,11 +215,15 @@ def _parse_args() -> argparse.Namespace:
 class HotkeyBridge(QObject):
     """Thread-safe bridge dispatching global hotkey events to Qt main thread."""
     sig_toggle_master = Signal()
+    sig_toggle_mode = Signal()
     sig_toggle_player = Signal()
     sig_toggle_enemy = Signal()
     sig_toggle_defense = Signal()
+    sig_toggle_turn = Signal()
     sig_toggle_flip = Signal()
     sig_toggle_hl = Signal()
+    sig_toggle_hud = Signal()
+    sig_toggle_auto = Signal()
     sig_recalibrate = Signal()
     sig_close = Signal()
 
@@ -82,11 +242,24 @@ def main() -> None:
     from chess_visualizer.overlay import OverlayConfig
     from chess_visualizer._overlay_widget import OverlayWidget
     from chess_visualizer._control_bar import ControlBar
+    from chess_visualizer._hud_panel import HUDPanel
+    from chess_visualizer._tray import AppTrayIcon, create_app_icon
     from chess_visualizer.chess_logic import get_all_captures_dict
     from chess_visualizer.capture import ScreenCapture
-    from chess_visualizer.recognition import Recognizer
+    from chess_visualizer.recognition import Recognizer, detect_chessboard_fullscreen, detect_chessboard_in_crop
+    from chess_tactical import generate_tactical_report
+
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("chess_analysis_overlay.app.v1")
+    except Exception:
+        pass
+
+    app.setWindowIcon(create_app_icon())
 
     settings = Settings.load()
+    # Ensure overlay is visible by default unless explicitly hidden
+    if not hasattr(settings, 'overlay_visible'):
+        settings.overlay_visible = True
 
     if args.board_region:
         try:
@@ -100,33 +273,66 @@ def main() -> None:
         settings.update_interval = args.interval
 
     # -------------------------------------------------------------------------
-    # Setup Overlay and ControlBar
+    # Setup Overlay, ControlBar, and Tactical HUD
     # -------------------------------------------------------------------------
     def make_config() -> OverlayConfig:
         region = settings.board_region or (100, 100, 640, 640)
         return OverlayConfig(
             board_region=region,
             opacity=settings.opacity,
+            mode=settings.active_mode,
             flipped=settings.flipped,
             overlay_visible=settings.overlay_visible,
             show_white=settings.show_white,
             show_black=settings.show_black,
             show_highlights=settings.show_highlights,
             show_defense=settings.show_defense,
+            show_tactical_arrows=settings.show_tactical_arrows,
+            show_tactical_highlights=settings.show_highlights,
         )
 
     overlay = OverlayWidget(make_config())
     control_bar: Optional[ControlBar] = None
+    hud_panel: Optional[HUDPanel] = None
+    tray_icon: Optional[AppTrayIcon] = None
+
+    # Core state tracking variables (initialized before UI refresh and event callbacks)
+    current_active_turn: bool = chess.WHITE
+    current_flipped: Optional[bool] = None
+    manual_turn_override: bool = False
+    last_fen: Optional[str] = None
+    last_pieces_fen: Optional[str] = None
+    last_board_state: Optional[chess.Board] = None
+
+    def trigger_immediate_update():
+        nonlocal last_fen
+        last_fen = None
+        if "update_loop" in locals() or "update_loop" in globals():
+            try:
+                update_loop()
+            except Exception as e:
+                logger.debug("Immediate update deferred: %s", e)
 
     def refresh_ui_states():
         if control_bar:
             control_bar.update_states(
                 overlay_visible=settings.overlay_visible,
+                mode=settings.active_mode,
                 show_player=settings.show_white,
                 show_enemy=settings.show_black,
                 show_defense=settings.show_defense,
                 show_highlights=settings.show_highlights,
+                show_hud=settings.show_hud,
+                auto_track=(settings.auto_track and not settings.manual_locked),
                 flipped=settings.flipped,
+                active_turn=(current_active_turn == chess.WHITE),
+            )
+        if tray_icon:
+            tray_icon.update_states(
+                overlay_visible=settings.overlay_visible,
+                mode=settings.active_mode,
+                hud_visible=settings.show_hud,
+                auto_track=(settings.auto_track and not settings.manual_locked),
             )
 
     # -------------------------------------------------------------------------
@@ -138,6 +344,20 @@ def main() -> None:
         settings.save()
         overlay.set_config(make_config())
         refresh_ui_states()
+
+    def toggle_mode():
+        """Switch between Legal Captures and Tactical Analysis modes."""
+        settings.active_mode = "captures" if settings.active_mode == "tactics" else "tactics"
+        settings.save()
+        overlay.set_config(make_config())
+        if settings.active_mode == "tactics":
+            if hud_panel and settings.show_hud:
+                hud_panel.show()
+        else:
+            if hud_panel:
+                hud_panel.hide()
+        refresh_ui_states()
+        trigger_immediate_update()
 
     def toggle_player():
         settings.show_white = not settings.show_white
@@ -158,8 +378,20 @@ def main() -> None:
         refresh_ui_states()
         trigger_immediate_update()
 
+    def toggle_active_turn():
+        """Explicitly toggle active player turn between White and Black."""
+        nonlocal current_active_turn, last_fen, last_board_state, manual_turn_override
+        manual_turn_override = True
+        current_active_turn = not current_active_turn
+        logger.info("Active turn explicitly toggled to: %s", "White" if current_active_turn == chess.WHITE else "Black")
+        last_fen = None
+        refresh_ui_states()
+        trigger_immediate_update()
+
     def toggle_flip():
+        nonlocal current_flipped
         settings.flipped = not settings.flipped
+        current_flipped = settings.flipped
         settings.save()
         overlay.set_config(make_config())
         refresh_ui_states()
@@ -171,11 +403,40 @@ def main() -> None:
         overlay.set_config(make_config())
         refresh_ui_states()
 
+    def toggle_hud():
+        settings.show_hud = not settings.show_hud
+        settings.save()
+        if hud_panel:
+            if settings.show_hud:
+                hud_panel.show()
+            else:
+                hud_panel.hide()
+        refresh_ui_states()
+
+    def toggle_auto():
+        """Toggle between full-screen auto-tracking and manual locked mode."""
+        if settings.manual_locked:
+            settings.manual_locked = False
+            settings.auto_track = True
+            settings.board_region = None
+            logger.info("Switched to Full Automatic Board Detection & Tracking")
+        else:
+            settings.auto_track = not settings.auto_track
+            if settings.auto_track:
+                settings.board_region = None
+            logger.info("Auto-track toggled: %s", settings.auto_track)
+        settings.save()
+        refresh_ui_states()
+        trigger_immediate_update()
+
     def run_recalibrate():
+        """Manual calibration fallback: drag a box over the board."""
         from chess_visualizer._calibration import CalibrationWidget
         overlay.hide()
         if control_bar:
             control_bar.hide()
+        if hud_panel:
+            hud_panel.hide()
 
         cal = CalibrationWidget()
         cal.show()
@@ -185,55 +446,109 @@ def main() -> None:
 
         if cal.selected_region:
             settings.board_region = cal.selected_region
+            settings.manual_locked = True
             settings.save()
             overlay.set_config(make_config())
             if control_bar:
                 l, t, w, _ = settings.board_region
                 control_bar.position_above_board(l, t, w)
-            logger.info("New board region calibrated: %s", cal.selected_region)
+            if hud_panel and not settings.hud_pos:
+                l, t, w, h = settings.board_region
+                hud_panel.position_beside_board(l, t, w, h)
+            logger.info("Manual board region locked: %s", cal.selected_region)
 
-        overlay.show()
+        refresh_ui_states()
+        if settings.overlay_visible:
+            overlay.show()
         if control_bar:
             control_bar.show()
+        if hud_panel and settings.show_hud:
+            hud_panel.show()
 
     def close_app():
+        if tray_icon:
+            tray_icon.hide()
         if control_bar:
             settings.control_bar_pos = (control_bar.x(), control_bar.y())
-            settings.save()
             control_bar.close()
+        if hud_panel:
+            settings.hud_pos = (hud_panel.x(), hud_panel.y())
+            hud_panel.close()
+        settings.save()
         overlay.close()
         app.quit()
 
     # -------------------------------------------------------------------------
-    # Create Compact ControlBar
+    # Create Compact ControlBar, Tactical HUD Panel, and System Tray Icon
     # -------------------------------------------------------------------------
     control_bar = ControlBar(
         on_toggle_master=toggle_master,
+        on_toggle_mode=toggle_mode,
         on_toggle_white=toggle_player,
         on_toggle_black=toggle_enemy,
         on_toggle_defense=toggle_defense,
         on_flip=toggle_flip,
         on_toggle_highlights=toggle_highlights,
+        on_toggle_hud=toggle_hud,
+        on_toggle_auto=toggle_auto,
         on_recalibrate=run_recalibrate,
         on_close=close_app,
+        on_toggle_turn=toggle_active_turn,
     )
+
+    hud_panel = HUDPanel(on_close=toggle_hud, on_toggle_turn=toggle_active_turn)
+
+    tray_icon = AppTrayIcon(
+        on_toggle_master=toggle_master,
+        on_toggle_mode=toggle_mode,
+        on_toggle_hud=toggle_hud,
+        on_toggle_auto=toggle_auto,
+        on_recalibrate=run_recalibrate,
+        on_exit=close_app,
+    )
+    tray_icon.show()
     refresh_ui_states()
 
-    # Position ControlBar: restore saved position or place above board
+    # Position ControlBar: restore saved position or place above board, or center at top
     if settings.control_bar_pos:
         control_bar.move(*settings.control_bar_pos)
     elif settings.board_region:
         l, t, w, _ = settings.board_region
         control_bar.position_above_board(l, t, w)
+    else:
+        screen = app.primaryScreen()
+        if screen:
+            geo = screen.geometry()
+            cb_w = control_bar.sizeHint().width()
+            control_bar.move(geo.x() + (geo.width() - cb_w) // 2, geo.y() + 20)
+
+    # Position HUD Panel: restore saved position or place beside board
+    if settings.hud_pos:
+        hud_panel.move(*settings.hud_pos)
+    elif settings.board_region:
+        l, t, w, h = settings.board_region
+        hud_panel.position_beside_board(l, t, w, h)
 
     # -------------------------------------------------------------------------
-    # Initial Calibration if needed
+    # Initial Calibration ONLY if explicitly launched via --calibrate
     # -------------------------------------------------------------------------
-    if args.calibrate or settings.board_region is None:
+    if args.calibrate:
         run_recalibrate()
 
-    overlay.show()
+    # Always show ControlBar immediately so the user has visual confirmation & taskbar access
     control_bar.show()
+
+    # In manual mode with saved region, show overlay and hud right away
+    if settings.manual_locked and settings.board_region:
+        if settings.overlay_visible:
+            overlay.show()
+        if settings.show_hud:
+            hud_panel.show()
+        control_bar.set_status("Manual", mode="manual")
+        tray_icon.set_status_text("Manual Region Locked")
+    else:
+        control_bar.set_status("Searching...", mode="searching")
+        tray_icon.set_status_text("Searching for chessboard...")
 
     # -------------------------------------------------------------------------
     # Thread-Safe Global Hotkeys via Signal Bridge
@@ -241,11 +556,15 @@ def main() -> None:
     # -------------------------------------------------------------------------
     bridge = HotkeyBridge()
     bridge.sig_toggle_master.connect(toggle_master)
+    bridge.sig_toggle_mode.connect(toggle_mode)
     bridge.sig_toggle_player.connect(toggle_player)
     bridge.sig_toggle_enemy.connect(toggle_enemy)
     bridge.sig_toggle_defense.connect(toggle_defense)
+    bridge.sig_toggle_turn.connect(toggle_active_turn)
     bridge.sig_toggle_flip.connect(toggle_flip)
     bridge.sig_toggle_hl.connect(toggle_highlights)
+    bridge.sig_toggle_hud.connect(toggle_hud)
+    bridge.sig_toggle_auto.connect(toggle_auto)
     bridge.sig_recalibrate.connect(run_recalibrate)
     bridge.sig_close.connect(close_app)
 
@@ -253,11 +572,15 @@ def main() -> None:
         import keyboard
         # Conflict-free shortcuts using Ctrl+Alt modifiers
         keyboard.add_hotkey("ctrl+alt+x", bridge.sig_toggle_master.emit, suppress=False)
+        keyboard.add_hotkey("ctrl+alt+m", bridge.sig_toggle_mode.emit, suppress=False)
         keyboard.add_hotkey("ctrl+alt+a", bridge.sig_toggle_player.emit, suppress=False)
         keyboard.add_hotkey("ctrl+alt+s", bridge.sig_toggle_enemy.emit, suppress=False)
         keyboard.add_hotkey("ctrl+alt+d", bridge.sig_toggle_defense.emit, suppress=False)
+        keyboard.add_hotkey("ctrl+alt+w", bridge.sig_toggle_turn.emit, suppress=False)
         keyboard.add_hotkey("ctrl+alt+f", bridge.sig_toggle_flip.emit, suppress=False)
         keyboard.add_hotkey("ctrl+alt+h", bridge.sig_toggle_hl.emit, suppress=False)
+        keyboard.add_hotkey("ctrl+alt+t", bridge.sig_toggle_hud.emit, suppress=False)
+        keyboard.add_hotkey("ctrl+alt+b", bridge.sig_toggle_auto.emit, suppress=False)
         keyboard.add_hotkey("ctrl+alt+c", bridge.sig_recalibrate.emit, suppress=False)
         keyboard.add_hotkey("ctrl+alt+q", bridge.sig_close.emit, suppress=False)
     except Exception as exc:
@@ -267,72 +590,392 @@ def main() -> None:
     # Static FEN mode
     # -------------------------------------------------------------------------
     if args.fen:
+        test_b = chess.Board(args.fen)
         caps = get_all_captures_dict(args.fen, include_empty=True, include_defense=settings.show_defense)
         overlay.set_captures(caps["white"], caps["black"], board_flipped=args.flip)
+        try:
+            tac_report = generate_tactical_report(test_b, search_depth=3)
+            overlay.set_tactical_report(tac_report)
+            if hud_panel:
+                hud_panel.update_report(tac_report)
+        except Exception as t_exc:
+            logger.debug("Tactical analysis error in FEN mode: %s", t_exc)
+        overlay.show()
+        control_bar.show()
+        if settings.show_hud:
+            hud_panel.show()
         sys.exit(app.exec())
 
     # -------------------------------------------------------------------------
-    # Live Recognition Loop
+    # Live Recognition & Automatic Board Tracking Loop
     # -------------------------------------------------------------------------
     cap = ScreenCapture()
     recognizer = Recognizer()
-    last_fen: Optional[str] = None
+    miss_count = 0
+    screen = app.primaryScreen()
+    dpr = float(screen.devicePixelRatio()) if screen else 1.0
 
-    def update_loop():
-        nonlocal last_fen
+    def hide_all_ui():
+        overlay.hide()
+        if hud_panel:
+            hud_panel.hide()
+        if control_bar:
+            control_bar.set_status("Searching...", mode="searching")
+        if tray_icon:
+            tray_icon.set_status_text("Searching for chessboard...")
 
-        region = settings.board_region
-        if not region:
-            return
+    def show_all_ui():
+        if settings.overlay_visible:
+            overlay.show()
+        if settings.active_mode == "tactics" and settings.show_hud and hud_panel:
+            hud_panel.show()
+        elif settings.active_mode != "tactics" and hud_panel:
+            hud_panel.hide()
+        if control_bar:
+            control_bar.show()
+            if settings.manual_locked:
+                control_bar.set_status("Manual", mode="manual")
+                if tray_icon:
+                    tray_icon.set_status_text("Manual Region Locked")
+            else:
+                control_bar.set_status("Locked", mode="locked")
+                if tray_icon:
+                    tray_icon.set_status_text("Board Locked")
 
-        left, top, w, h = region
-        frame = cap.grab_region(left, top, w, h)
-        if frame is None:
-            return
+    def process_recognized_position(
+        test_b: chess.Board,
+        fen: str,
+        flipped: bool,
+        confidence: float,
+        active_turn: Optional[bool] = None,
+        force_redraw: bool = False,
+    ):
+        nonlocal last_fen, last_pieces_fen, last_board_state, current_active_turn, current_flipped, manual_turn_override
 
-        # Direct board recognition on the cropped board image
-        # Let recognizer auto-infer physical orientation so FEN and squares are always physically aligned
-        result = recognizer.recognize_board(frame, flipped=None)
+        # Piece placement part of FEN (e.g. "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")
+        pieces_part = fen.split(" ")[0]
 
-        if not result.success or not result.fen:
-            return
+        # Check if either king is in check (forced turn by chess rules)
+        wk = test_b.king(chess.WHITE)
+        bk = test_b.king(chess.BLACK)
+        w_in_check = bool(test_b.attackers(chess.BLACK, wk)) if wk is not None else False
+        b_in_check = bool(test_b.attackers(chess.WHITE, bk)) if bk is not None else False
+        forced_turn = None
+        if b_in_check and not w_in_check:
+            forced_turn = chess.BLACK
+        elif w_in_check and not b_in_check:
+            forced_turn = chess.WHITE
 
-        fen = result.fen
+        # 1. First recognition or forced redraw (board reset/switch)
+        # Initialize turn directly from physical board detector instead of hardcoded default
+        if last_board_state is None or force_redraw:
+            current_flipped = flipped
+            manual_turn_override = False
+            if forced_turn is not None:
+                current_active_turn = forced_turn
+            elif active_turn is not None:
+                current_active_turn = active_turn
+            elif test_b.turn is not None:
+                current_active_turn = test_b.turn
+            test_b.turn = current_active_turn
+            last_board_state = test_b.copy()
+            refresh_ui_states()
+        else:
+            # Check board continuity and sanitize any impossible phantom piece spawns
+            sanitized_b = sanitize_board_transition(last_board_state, test_b)
+            if sanitized_b.piece_map() != test_b.piece_map():
+                test_b = sanitized_b
+                pieces_part = test_b.board_fen()
+                fen_parts = fen.split(" ")
+                fen_parts[0] = pieces_part
+                fen = " ".join(fen_parts)
 
-        # Ignore empty boards (e.g. during screen minimize or page transitions)
-        try:
-            test_b = chess.Board(fen)
-            if len(test_b.piece_map()) < 2:
-                return
-        except Exception:
-            return
+            # Check for transient piece drag frame (piece lifted from square, not yet dropped)
+            prev_map = last_board_state.piece_map()
+            new_map = test_b.piece_map()
+            if prev_map != new_map:
+                prev_w = {sq: p for sq, p in prev_map.items() if p.color == chess.WHITE}
+                new_w = {sq: p for sq, p in new_map.items() if p.color == chess.WHITE}
+                prev_b = {sq: p for sq, p in prev_map.items() if p.color == chess.BLACK}
+                new_b = {sq: p for sq, p in new_map.items() if p.color == chess.BLACK}
 
-        if fen == last_fen:
+                w_vacated = set(prev_w.keys()) - set(new_w.keys())
+                b_vacated = set(prev_b.keys()) - set(new_b.keys())
+                w_new_squares = set(new_w.keys()) - set(prev_w.keys())
+                b_new_squares = set(new_b.keys()) - set(prev_b.keys())
+
+                # A friendly piece vanished from its square with no arrival destination
+                # and no opponent move. This is a transient mouse drag frame on Lichess/Chess.com.
+                if (w_vacated and not w_new_squares and not b_new_squares and not b_vacated) or \
+                   (b_vacated and not b_new_squares and not w_new_squares and not w_vacated):
+                    logger.debug("Transient piece drag frame ignored; preserving established board state.")
+                    return
+
+            # 2. Subsequent frames on the same board
+            if test_b.piece_map() == last_board_state.piece_map():
+                # Pieces are on the exact same squares (selection click, idle, or manual turn toggle)
+                if forced_turn is not None:
+                    if current_active_turn != forced_turn:
+                        current_active_turn = forced_turn
+                        manual_turn_override = False
+                        refresh_ui_states()
+                    test_b.turn = current_active_turn
+                elif manual_turn_override:
+                    # User explicitly chose the turn via button/hotkey; preserve without automated override!
+                    test_b.turn = current_active_turn
+                else:
+                    if active_turn is not None and active_turn != current_active_turn:
+                        # Square highlights clearly detected active player selection or move
+                        current_active_turn = active_turn
+                        refresh_ui_states()
+                    test_b.turn = current_active_turn
+            else:
+                # Pieces physically moved
+                manual_turn_override = False
+                if forced_turn is not None:
+                    current_active_turn = forced_turn
+                    test_b.turn = forced_turn
+                    last_board_state = test_b.copy()
+                    refresh_ui_states()
+                elif test_b.board_fen() == chess.STARTING_BOARD_FEN:
+                    current_active_turn = chess.WHITE
+                    test_b.turn = chess.WHITE
+                    last_board_state = test_b.copy()
+                    refresh_ui_states()
+                else:
+                    next_turn = determine_turn_from_move(last_board_state, test_b)
+                    if next_turn is not None:
+                        current_active_turn = next_turn
+                        test_b.turn = next_turn
+                        last_board_state = test_b.copy()
+                        refresh_ui_states()
+                    elif active_turn is not None:
+                        current_active_turn = active_turn
+                        test_b.turn = current_active_turn
+                        last_board_state = test_b.copy()
+                        refresh_ui_states()
+                    else:
+                        test_b.turn = current_active_turn
+                        last_board_state = test_b.copy()
+
+        last_pieces_fen = pieces_part
+        fen_parts = fen.split(" ")
+        fen_parts[1] = "w" if current_active_turn == chess.WHITE else "b"
+        fen = " ".join(fen_parts)
+
+        if not force_redraw and fen == last_fen:
             return
 
         last_fen = fen
-        conf_pct = int(result.confidence * 100)
+        conf_pct = int(confidence * 100)
         logger.info("Position recognized: %s (confidence: %d%%)", fen, conf_pct)
 
-        # Calculate captures and defense for all pieces
         try:
             captures = get_all_captures_dict(fen, include_empty=True, include_defense=True)
-            overlay.set_captures(captures["white"], captures["black"], board_flipped=result.flipped)
+            overlay.set_captures(captures["white"], captures["black"], board_flipped=flipped)
             w_count, b_count = len(captures["white"]), len(captures["black"])
             logger.info("Drawn %d White arrows, %d Black arrows (defense=%s)",
                         w_count, b_count, settings.show_defense)
+
+            try:
+                tac_report = generate_tactical_report(test_b, search_depth=3, active_turn=current_active_turn)
+                overlay.set_tactical_report(tac_report)
+                if hud_panel:
+                    hud_panel.update_report(tac_report)
+            except Exception as t_exc:
+                logger.debug("Tactical analysis error: %s", t_exc)
         except Exception as exc:
             logger.error("Capture calculation error: %s", exc)
 
-    def trigger_immediate_update():
-        nonlocal last_fen
-        last_fen = None
-        update_loop()
+    def _grab_clean(grab_func, *args):
+        """Execute screen capture cleanly and reliably.
+
+        SCREEN CAPTURE ISOLATION INVARIANT:
+        When OS-level DWM capture exclusion (WDA_EXCLUDEFROMCAPTURE) is active,
+        captures directly with zero overhead and zero visual flickering because
+        Windows excludes the overlay at the compositor level.
+        If OS exclusion is unavailable or inactive, momentarily hides the overlay
+        during the grab so overlay annotations NEVER contaminate board recognition.
+        """
+        if getattr(overlay, "is_capture_excluded", False):
+            return grab_func(*args)
+
+        was_visible = overlay.isVisible()
+        if was_visible:
+            overlay.hide()
+            app.processEvents()
+        try:
+            return grab_func(*args)
+        finally:
+            if was_visible:
+                overlay.show()
+                app.processEvents()
+
+    def update_loop():
+        nonlocal last_fen, miss_count, current_flipped
+
+        # ---------------------------------------------------------------------
+        # 1. Manual Locked Mode (user manually calibrated / fixed region)
+        # ---------------------------------------------------------------------
+        if settings.manual_locked and settings.board_region:
+            region = settings.board_region
+            left, top, w, h = region
+            frame = _grab_clean(cap.grab_region, left, top, w, h)
+            if frame is None:
+                return
+
+            result = recognizer.recognize_board(frame, flipped=current_flipped, current_turn=current_active_turn)
+            if not result.success or not result.fen:
+                return
+
+            try:
+                test_b = chess.Board(result.fen)
+                if not is_valid_recognized_board(test_b) or result.confidence < 0.60:
+                    return
+            except Exception:
+                return
+
+            show_all_ui()
+            process_recognized_position(test_b, result.fen, result.flipped, result.confidence)
+            return
+
+        # ---------------------------------------------------------------------
+        # 2. Fully Automatic Detection & Tracking Mode
+        # ---------------------------------------------------------------------
+        # Fast path: If we are already locked on a region, directly verify board pieces
+        if settings.board_region:
+            left, top, w, h = settings.board_region
+            frame = _grab_clean(cap.grab_region, left, top, w, h)
+            if frame is not None:
+                result = recognizer.recognize_board(frame, flipped=current_flipped, current_turn=current_active_turn)
+                if result.success and result.fen:
+                    try:
+                        test_b = chess.Board(result.fen)
+                        if is_valid_recognized_board(test_b) and result.confidence >= 0.65:
+                            miss_count = 0
+                            show_all_ui()
+                            process_recognized_position(
+                                test_b,
+                                result.fen,
+                                result.flipped,
+                                result.confidence,
+                                active_turn=result.active_turn,
+                            )
+                            return
+                    except Exception:
+                        pass
+
+        # Slow path / Board moved or absent: Scan full screen
+        full_data = _grab_clean(cap.grab_fullscreen)
+        if full_data is None:
+            miss_count += 1
+            if miss_count >= 3:
+                if not settings.manual_locked:
+                    settings.board_region = None
+                overlay.clear()
+                hide_all_ui()
+                last_fen = None
+            return
+
+        screen_pil, geo_x, geo_y = full_data
+        detected_phys = detect_chessboard_fullscreen(screen_pil)
+
+        if detected_phys is None:
+            miss_count += 1
+            if miss_count >= 3:
+                if not settings.manual_locked:
+                    settings.board_region = None
+                overlay.clear()
+                hide_all_ui()
+                last_fen = None
+            return
+
+        pbx, pby, pbw, pbh = detected_phys
+        # Convert physical pixels to Qt logical coordinates
+        log_x = geo_x + int(round(pbx / dpr))
+        log_y = geo_y + int(round(pby / dpr))
+        log_w = int(round(pbw / dpr))
+        log_h = int(round(pbh / dpr))
+        log_s = (log_w + log_h) // 2
+
+        new_region = (log_x, log_y, log_s, log_s)
+
+        # Verify candidate by cropping and classifying pieces
+        board_crop = screen_pil.crop((pbx, pby, pbx + pbw, pby + pbh))
+        verif = recognizer.recognize_board(board_crop, flipped=None, current_turn=current_active_turn)
+
+        if not verif.success or not verif.fen:
+            miss_count += 1
+            if miss_count >= 3:
+                if not settings.manual_locked:
+                    settings.board_region = None
+                overlay.clear()
+                hide_all_ui()
+                last_fen = None
+            return
+
+        try:
+            test_b = chess.Board(verif.fen)
+            if not is_valid_recognized_board(test_b) or verif.confidence < 0.65:
+                miss_count += 1
+                if miss_count >= 3:
+                    if not settings.manual_locked:
+                        settings.board_region = None
+                    overlay.clear()
+                    hide_all_ui()
+                    last_fen = None
+                return
+        except Exception:
+            miss_count += 1
+            if miss_count >= 3:
+                if not settings.manual_locked:
+                    settings.board_region = None
+                overlay.clear()
+                hide_all_ui()
+                last_fen = None
+            return
+
+        # Real chessboard verified!
+        miss_count = 0
+        region_changed = False
+        if settings.board_region is None:
+            region_changed = True
+        else:
+            rx, ry, rw, rh = settings.board_region
+            nx, ny, nw, nh = new_region
+            if abs(rx - nx) > 4 or abs(ry - ny) > 4 or abs(rw - nw) > 4:
+                region_changed = True
+
+        if region_changed:
+            settings.board_region = new_region
+            last_fen = None
+            last_pieces_fen = None
+            last_board_state = None
+            current_flipped = None
+            manual_turn_override = False
+            overlay.set_config(make_config())
+            if not settings.control_bar_pos:
+                control_bar.position_above_board(log_x, log_y, log_s)
+            if not settings.hud_pos:
+                hud_panel.position_beside_board(log_x, log_y, log_s, log_s)
+
+        show_all_ui()
+        process_recognized_position(
+            test_b,
+            verif.fen,
+            verif.flipped,
+            verif.confidence,
+            active_turn=verif.active_turn,
+            force_redraw=region_changed,
+        )
 
     interval_ms = max(250, int(settings.update_interval * 1000))
     timer = QTimer()
     timer.timeout.connect(update_loop)
     timer.start(interval_ms)
+
+    # Immediately trigger the first detection pass without waiting for timer interval
+    QTimer.singleShot(10, update_loop)
 
     exit_code = app.exec()
     try:
