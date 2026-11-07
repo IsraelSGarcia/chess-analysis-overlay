@@ -25,6 +25,8 @@ from chess_tactical import (
     find_back_rank_weaknesses,
     MotifType,
     calculate_tactical_sequences,
+    find_trapped_pieces,
+    find_xray_rays,
     generate_tactical_report,
 )
 
@@ -194,6 +196,77 @@ class TestTacticalReport(unittest.TestCase):
         self.assertIn(chess.BLACK, report.captures)
         self.assertIsInstance(report.summary_lines(), list)
         self.assertGreater(len(report.summary_lines()), 0)
+        self.assertIn(chess.WHITE, report.trapped_pieces)
+        self.assertIn(chess.BLACK, report.trapped_pieces)
+        self.assertIsInstance(report.xray_rays, list)
+        # Verify multi-ply forcing minimax sequences are disabled per 0-ply pure non-engine geometric design
+        self.assertEqual(len(report.forcing_sequences[chess.WHITE]), 0)
+        self.assertEqual(len(report.forcing_sequences[chess.BLACK]), 0)
+
+
+class TestTrappedPieces(unittest.TestCase):
+    """Test trapped piece detection."""
+
+    def test_noahs_ark_trapped_bishop(self):
+        # Position after 11... c4 in Noah's Ark trap: White bishop on b3 is trapped
+        board = chess.Board("r2qkb1r/3b1ppp/p2p4/1p1Q4/2p1P3/1B6/PPP2PPP/RNB1K2R w KQkq - 0 12")
+        trapped = find_trapped_pieces(board)
+        white_trapped = trapped[chess.WHITE]
+        self.assertEqual(len(white_trapped), 1)
+        self.assertEqual(white_trapped[0].square, chess.B3)
+        self.assertEqual(white_trapped[0].piece_type, chess.BISHOP)
+
+    def test_trapped_knight_on_rim(self):
+        # Black knight trapped on h1
+        board = chess.Board("r1b1k2r/pppp1ppp/8/8/8/8/PPP2PPP/RNB1K2n w Qkq - 0 1")
+        trapped = find_trapped_pieces(board)
+        black_trapped = trapped[chess.BLACK]
+        self.assertEqual(len(black_trapped), 1)
+        self.assertEqual(black_trapped[0].square, chess.H1)
+        self.assertEqual(black_trapped[0].piece_type, chess.KNIGHT)
+
+    def test_starting_position_no_trapped_pieces(self):
+        board = chess.Board()
+        trapped = find_trapped_pieces(board)
+        self.assertEqual(len(trapped[chess.WHITE]), 0)
+        self.assertEqual(len(trapped[chess.BLACK]), 0)
+
+    def test_pinned_piece_not_falsely_trapped(self):
+        # White knight on c3 is pinned to King on e1; it should not be reported as trapped
+        board = chess.Board("r1bqk2r/pppp1ppp/2n5/4p3/1bB1P1n1/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 1")
+        trapped = find_trapped_pieces(board)
+        c3_trapped = [t for t in trapped[chess.WHITE] if t.square == chess.C3]
+        self.assertEqual(len(c3_trapped), 0)
+
+
+class TestXRayRays(unittest.TestCase):
+    """Test slider X-ray ray detection."""
+
+    def test_bishop_xray_on_enemy_king(self):
+        # Black bishop on b4 X-rays King on e1 through Knight on c3
+        board = chess.Board("r1bqk2r/pppp1ppp/2n5/4p3/1bB1P1n1/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 1")
+        rays = find_xray_rays(board)
+        matching = [
+            r for r in rays
+            if r.slider_square == chess.B4
+            and r.intervening_square == chess.C3
+            and r.target_square == chess.E1
+        ]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0].slider_type, chess.BISHOP)
+        self.assertEqual(matching[0].target_type, chess.KING)
+
+    def test_queen_open_file_xray(self):
+        # White Queen on d1 X-rays Black Queen on d8 through pawn on d7
+        board = chess.Board("r1bqk2r/pp1p1pbp/2n1p1p1/8/4P3/1PN5/PBP2PPP/R2QKB1R w KQkq - 0 9")
+        rays = find_xray_rays(board)
+        matching = [
+            r for r in rays
+            if r.slider_square == chess.D1
+            and r.target_square == chess.D8
+        ]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0].intervening_square, chess.D7)
 
 
 if __name__ == "__main__":

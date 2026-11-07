@@ -233,18 +233,27 @@ class OverlayWidget(QWidget):
                 for tgt_sq in m.target_squares:
                     tgt_rect = self._get_square_rect(tgt_sq)
                     self._draw_corner_brackets(p, tgt_rect, QColor(213, 0, 249, 190), bracket_len=9.0, pen_width=1.8)
+
+            # Trapped Pieces (Ice Cyan #00E5FF: thin dashed perimeter & corner brackets)
+            trapped_map = getattr(rep, 'trapped_pieces', {})
+            for color_key in (chess.WHITE, chess.BLACK):
+                for tp in trapped_map.get(color_key, []):
+                    tp_rect = self._get_square_rect(tp.square)
+                    p.setPen(QPen(QColor(0, 229, 255, 140), 1.5, Qt.PenStyle.DashLine))
+                    p.drawRect(tp_rect)
+                    self._draw_corner_brackets(p, tp_rect, QColor(0, 229, 255, 240), bracket_len=11.0, pen_width=2.2)
         except Exception as exc:
             logger.debug("Tactical accents paint error: %s", exc)
 
         # ---------------------------------------------------------------------
-        # 2. Every Single Blunder Move for Active Turn (Crimson Red #FF1744)
+        # 2. Every Single Blunder Move for Active Turn (Crimson Red #FF1744 - Subtle & Thin)
         # ---------------------------------------------------------------------
         try:
             all_blunders = rep.blunders.get(turn_color, []) if hasattr(rep, 'blunders') else []
             for b in all_blunders:
                 fx, fy = self._get_square_centre(b.move.from_square)
                 tx, ty = self._get_square_centre(b.move.to_square)
-                self._draw_single_arrow(p, fx, fy, tx, ty, QColor(255, 23, 68, 200), False, width_mult=0.95)
+                self._draw_single_arrow(p, fx, fy, tx, ty, QColor(255, 23, 68, 110), False, width_mult=0.55)
         except Exception as exc:
             logger.debug("Blunders paint error: %s", exc)
 
@@ -336,21 +345,37 @@ class OverlayWidget(QWidget):
             logger.debug("Motifs paint error: %s", exc)
 
         # ---------------------------------------------------------------------
-        # 5. Calculated Forcing Sequence Key Moves (Vibrant Gold #FFD600)
+        # 5. Slider X-Ray Rays (Ice Cyan #00E5FF: Dashed Lines of Force through Obstacles)
         # ---------------------------------------------------------------------
         try:
-            seqs = rep.forcing_sequences.get(turn_color, []) if hasattr(rep, 'forcing_sequences') else []
-            if seqs and seqs[0].moves:
-                key_move = seqs[0].moves[0]
-                # If key move is not already a favorable capture (which gets a bold green arrow),
-                # highlight the breakthrough move with a gold arrow
-                fav_moves = {ex.move for ex in rep.favorable_captures(turn_color)}
-                if key_move not in fav_moves and seqs[0].score > 100:
-                    kx1, ky1 = self._get_square_centre(key_move.from_square)
-                    kx2, ky2 = self._get_square_centre(key_move.to_square)
-                    self._draw_single_arrow(p, kx1, ky1, kx2, ky2, QColor(255, 214, 0, 245), False, width_mult=1.3)
+            # Prevent duplicate rays where pins, skewers, or discovered attacks are already drawn
+            existing_motif_rays = set()
+            for m in rep.motifs:
+                if m.motif_type in (MotifType.ABSOLUTE_PIN, MotifType.RELATIVE_PIN, MotifType.SKEWER) and len(m.target_squares) >= 2:
+                    existing_motif_rays.add((m.source_square, m.target_squares[1]))
+                    existing_motif_rays.add((m.target_squares[0], m.target_squares[1]))
+                elif m.motif_type in (MotifType.DISCOVERED_ATTACK, MotifType.DISCOVERED_CHECK) and len(m.target_squares) >= 2:
+                    existing_motif_rays.add((m.target_squares[0], m.target_squares[1]))
+
+            for xr in getattr(rep, 'xray_rays', []):
+                # Avoid overlapping existing pin/skewer/discovered attack lines
+                if (xr.slider_square, xr.target_square) in existing_motif_rays:
+                    continue
+                if (xr.intervening_square, xr.target_square) in existing_motif_rays:
+                    continue
+
+                sx, sy = self._get_square_centre(xr.slider_square)
+                tx, ty = self._get_square_centre(xr.target_square)
+                # Thin, elegant dashed laser ray from slider piercing through obstacle to target
+                self._draw_single_arrow(
+                    p, sx, sy, tx, ty,
+                    QColor(0, 229, 255, 160),
+                    False,
+                    width_mult=0.85,
+                    is_dashed=True,
+                )
         except Exception as exc:
-            logger.debug("Forcing sequence paint error: %s", exc)
+            logger.debug("X-Ray rays paint error: %s", exc)
 
         # ---------------------------------------------------------------------
         # 6. Winning Trades for Active Turn (Vivid Emerald Green #00E676: SEE > 0)

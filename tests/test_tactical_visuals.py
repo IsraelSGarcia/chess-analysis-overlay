@@ -98,6 +98,48 @@ class TestTacticalVisuals(unittest.TestCase):
         self.assertGreaterEqual(start_offset, 20.0)
         self.assertGreaterEqual(end_offset, 18.0)
 
+    def test_tactics_mode_paint_trapped_piece(self):
+        # Position after 11... c4 in Noah's Ark trap: White bishop on b3 is trapped
+        board = chess.Board("r2qkb1r/3b1ppp/p2p4/1p1Q4/2p1P3/1B6/PPP2PPP/RNB1K2R w KQkq - 0 12")
+        report = generate_tactical_report(board, search_depth=3, active_turn=chess.WHITE)
+
+        self.widget.set_tactical_report(report)
+        self.hud.update_report(report)
+
+        # Verify HUD trapped pill is visible
+        self.assertTrue(self.hud.lbl_trapped.isVisible())
+        self.assertIn("Trapped", self.hud.lbl_trapped.text())
+
+        # Off-screen paint must succeed and draw trapped piece brackets
+        img = QImage(640, 640, QImage.Format.Format_ARGB32)
+        img.fill(0)
+        p = QPainter(img)
+        self.widget._paint_tactics_mode(p)
+        p.end()
+
+        import numpy as np
+        arr = np.frombuffer(img.constBits(), dtype=np.uint8).reshape(640, 640, 4)
+        self.assertGreater(np.count_nonzero(arr[:, :, 3]), 100)
+
+    def test_tactics_mode_paint_xray_rays(self):
+        # Position with Black Bishop on b4 X-raying King on e1 through Knight on c3
+        board = chess.Board("r1bqk2r/pppp1ppp/2n5/4p3/1bB1P1n1/2NP1N2/PPP2PPP/R1BQK2R w KQkq - 0 1")
+        report = generate_tactical_report(board, search_depth=3, active_turn=chess.WHITE)
+
+        self.widget.set_tactical_report(report)
+        self.hud.update_report(report)
+
+        # Off-screen paint must succeed
+        img = QImage(640, 640, QImage.Format.Format_ARGB32)
+        img.fill(0)
+        p = QPainter(img)
+        self.widget._paint_tactics_mode(p)
+        p.end()
+
+        import numpy as np
+        arr = np.frombuffer(img.constBits(), dtype=np.uint8).reshape(640, 640, 4)
+        self.assertGreater(np.count_nonzero(arr[:, :, 3]), 100)
+
 
 if __name__ == "__main__":
     unittest.main()

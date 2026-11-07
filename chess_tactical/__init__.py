@@ -52,6 +52,14 @@ from chess_tactical.blunders import (
     BlunderMove,
     find_all_blunders,
 )
+from chess_tactical.trapped import (
+    TrappedPiece,
+    find_trapped_pieces,
+)
+from chess_tactical.xray import (
+    XRayRay,
+    find_xray_rays,
+)
 from chess_tactical.report import (
     TacticalReport,
     generate_tactical_report,
@@ -82,6 +90,10 @@ __all__ = [
     "calculate_tactical_sequences",
     "BlunderMove",
     "find_all_blunders",
+    "TrappedPiece",
+    "find_trapped_pieces",
+    "XRayRay",
+    "find_xray_rays",
     "TacticalReport",
     "generate_tactical_report",
 ]

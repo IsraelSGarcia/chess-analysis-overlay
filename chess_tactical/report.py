@@ -24,6 +24,8 @@ from chess_tactical.hanging import HangingPiece, find_hanging_pieces
 from chess_tactical.motifs import TacticalMotif, scan_all_motifs, MotifType
 from chess_tactical.forcing_search import TacticalSequence, calculate_tactical_sequences
 from chess_tactical.blunders import BlunderMove, find_all_blunders
+from chess_tactical.trapped import TrappedPiece, find_trapped_pieces
+from chess_tactical.xray import XRayRay, find_xray_rays
 
 
 @dataclass
@@ -37,6 +39,8 @@ class TacticalReport:
     motifs: List[TacticalMotif]
     forcing_sequences: Dict[chess.Color, List[TacticalSequence]]
     blunders: Dict[chess.Color, List[BlunderMove]] = field(default_factory=dict)
+    trapped_pieces: Dict[chess.Color, List[TrappedPiece]] = field(default_factory=dict)
+    xray_rays: List[XRayRay] = field(default_factory=list)
 
     @property
     def white_material_lead(self) -> float:
@@ -110,7 +114,14 @@ class TacticalReport:
         for m in self.motifs[:3]:
             lines.append(f"Motif: {m.description}")
 
-        # 6. Forcing sequence preview
+        # 6. Trapped pieces
+        for color, name in [(chess.WHITE, "White"), (chess.BLACK, "Black")]:
+            trapped_list = self.trapped_pieces.get(color, [])
+            if trapped_list:
+                items = [f"{t.piece_symbol}@{t.square_name}" for t in trapped_list]
+                lines.append(f"Trapped {name}: {', '.join(items)}")
+
+        # 7. Forcing sequence preview
         for color, name in [(chess.WHITE, "White"), (chess.BLACK, "Black")]:
             seqs = self.forcing_sequences.get(color, [])
             if seqs:
@@ -162,10 +173,10 @@ def generate_tactical_report(
     # 5. Motifs
     motifs = scan_all_motifs(board, attack_map)
 
-    # 6. Forcing sequences (optimized: focus compute on the active player to eliminate GUI lag)
+    # 6. Forcing sequences (disabled multi-ply calculation per 0-ply pure non-engine geometric design)
     forcing_sequences = {
-        turn_color: calculate_tactical_sequences(board, color=turn_color, max_depth=search_depth),
-        not turn_color: [],
+        chess.WHITE: [],
+        chess.BLACK: [],
     }
 
     # 7. Comprehensive blunder analysis for active turn
@@ -173,6 +184,12 @@ def generate_tactical_report(
         turn_color: find_all_blunders(board, color=turn_color),
         not turn_color: [],
     }
+
+    # 8. Trapped pieces detection
+    trapped_pieces = find_trapped_pieces(board)
+
+    # 9. Slider X-Ray rays
+    xray_rays = find_xray_rays(board)
 
     return TacticalReport(
         board=board,
@@ -183,4 +200,6 @@ def generate_tactical_report(
         motifs=motifs,
         forcing_sequences=forcing_sequences,
         blunders=blunders,
+        trapped_pieces=trapped_pieces,
+        xray_rays=xray_rays,
     )

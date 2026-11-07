@@ -189,6 +189,21 @@ class HUDPanel(QWidget):
         self.lbl_hanging.setVisible(False)
         card_layout.addWidget(self.lbl_hanging)
 
+        # Trapped Pieces Pill (Ice Cyan #00E5FF)
+        self.lbl_trapped = QLabel("")
+        self.lbl_trapped.setStyleSheet("""
+            background-color: rgba(0, 229, 255, 18);
+            color: #00e5ff;
+            border: 1px solid rgba(0, 229, 255, 70);
+            border-radius: 4px;
+            padding: 3px 6px;
+            font-size: 10px;
+            font-weight: 600;
+        """)
+        self.lbl_trapped.setWordWrap(True)
+        self.lbl_trapped.setVisible(False)
+        card_layout.addWidget(self.lbl_trapped)
+
         # Defended Pieces Pill (Sky Blue #00B0FF)
         self.lbl_defended = QLabel("")
         self.lbl_defended.setStyleSheet("""
@@ -239,6 +254,7 @@ class HUDPanel(QWidget):
             self.lbl_trades.setVisible(False)
             self.lbl_motifs.setVisible(False)
             self.lbl_hanging.setVisible(False)
+            self.lbl_trapped.setVisible(False)
             self.lbl_defended.setVisible(False)
             self.lbl_material.setText("Waiting for board position...")
             self.adjustSize()
@@ -305,6 +321,21 @@ class HUDPanel(QWidget):
             self.lbl_hanging.setVisible(True)
         else:
             self.lbl_hanging.setVisible(False)
+
+        # 5b. Trapped Pieces (Ice Cyan #00E5FF)
+        trapped_map = getattr(report, 'trapped_pieces', {})
+        trapped_own = trapped_map.get(turn_color, [])
+        trapped_enemy = trapped_map.get(not turn_color, [])
+        trapped_parts = []
+        if trapped_own:
+            trapped_parts.append(f"Friendly {', '.join(f'{t.piece_symbol}@{t.square_name}' for t in trapped_own[:2])} trapped")
+        if trapped_enemy:
+            trapped_parts.append(f"Enemy {', '.join(f'{t.piece_symbol}@{t.square_name}' for t in trapped_enemy[:2])} trapped")
+        if trapped_parts:
+            self.lbl_trapped.setText(f"🧊 Trapped: {' | '.join(trapped_parts)}")
+            self.lbl_trapped.setVisible(True)
+        else:
+            self.lbl_trapped.setVisible(False)
 
         # 6. Defended Pieces (Sky Blue #00B0FF)
         def_pieces = getattr(report.attack_map, 'defended_pieces', set())
