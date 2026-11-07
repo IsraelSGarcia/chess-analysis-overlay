@@ -87,13 +87,12 @@ def find_all_blunders(
         # Check: Immediate mate in 1 reply
         has_mate_reply = False
         mate_san = ""
-        for opp_m in list(test_board.legal_moves):
-            opp_san = test_board.san(opp_m)
+        for opp_m in test_board.legal_moves:
             test_board.push(opp_m)
             if test_board.is_checkmate():
                 has_mate_reply = True
-                mate_san = opp_san
                 test_board.pop()
+                mate_san = test_board.san(opp_m)
                 break
             test_board.pop()
 

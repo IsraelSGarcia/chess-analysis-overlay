@@ -103,10 +103,8 @@ def find_trapped_pieces(
 
             # Evaluate whether this piece has any safe destinations
             has_safe_move = False
-            for m in test_board.legal_moves:
-                if m.from_square != sq:
-                    continue
-
+            candidate_moves = [m for m in test_board.legal_moves if m.from_square == sq]
+            for m in candidate_moves:
                 to_sq = m.to_square
 
                 # Case 1: Capture or en passant

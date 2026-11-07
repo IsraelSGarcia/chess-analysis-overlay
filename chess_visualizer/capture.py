@@ -99,6 +99,12 @@ class ScreenCapture:
     def __init__(self) -> None:
         self._dpr: float = 1.0
         self._init_dpr()
+        self._sct = None
+        try:
+            import mss
+            self._sct = mss.mss()
+        except Exception as exc:
+            logger.debug("Persistent mss instance initialization deferred: %s", exc)
 
     def _init_dpr(self) -> None:
         try:
@@ -123,6 +129,8 @@ class ScreenCapture:
         -------
         PIL.Image.Image (RGB) or None on failure.
         """
+        self._init_dpr()
+
         # Physical coordinates for backends that operate in raw pixels
         phys_l = int(round(left * self._dpr))
         phys_t = int(round(top * self._dpr))
@@ -140,25 +148,24 @@ class ScreenCapture:
         except Exception as exc:
             logger.debug("ImageGrab failed: %s", exc)
 
-        # 2. Try mss
-        try:
-            import mss
-            with mss.mss() as sct:
+        # 2. Try mss (fast DirectX / GDI with persistent context)
+        if self._sct is not None:
+            try:
                 monitor = {
                     "left": phys_l,
                     "top": phys_t,
                     "width": phys_w,
                     "height": phys_h,
                 }
-                raw = sct.grab(monitor)
+                raw = self._sct.grab(monitor)
                 arr = np.frombuffer(raw.bgra, dtype=np.uint8).reshape(raw.height, raw.width, 4)
                 # BGRA to RGB
                 rgb = arr[:, :, [2, 1, 0]]
                 img = Image.fromarray(rgb)
                 if not is_black_image(img):
                     return img
-        except Exception as exc:
-            logger.debug("mss failed: %s", exc)
+            except Exception as exc:
+                logger.debug("mss persistent grab failed: %s", exc)
 
         # 3. Try Qt QScreen.grabWindow (uses logical coordinates)
         try:
@@ -181,7 +188,15 @@ class ScreenCapture:
         return None
 
     def release(self) -> None:
-        pass
+        if self._sct is not None:
+            try:
+                self._sct.close()
+            except Exception:
+                pass
+            self._sct = None
+
+    def __del__(self) -> None:
+        self.release()
 
     def grab_fullscreen(self) -> Optional[Tuple[Image.Image, int, int]]:
         """

@@ -33,6 +33,7 @@ from PySide6.QtWidgets import QWidget
 
 from chess_tactical.motifs import MotifType
 from chess_visualizer.capture import set_window_capture_exclusion
+from chess_visualizer.theme import THEME
 
 logger = logging.getLogger(__name__)
 
@@ -166,14 +167,10 @@ class OverlayWidget(QWidget):
 
         # 2. Arrows (Blue for Player, Red for Enemy)
         if cfg.show_white:
-            self._draw_arrows(p, player_moves, QColor(*cfg.white_color))
+            self._draw_arrows(p, player_moves, THEME.PLAYER_CAPTURE)
 
         if cfg.show_black:
-            self._draw_arrows(p, enemy_moves, QColor(*cfg.black_color))
-
-        # 3. Status text
-        if cfg.show_hud:
-            self._draw_hud(p, len(player_moves), len(enemy_moves))
+            self._draw_arrows(p, enemy_moves, THEME.ENEMY_CAPTURE)
 
     def _draw_corner_brackets(
         self,
@@ -217,48 +214,48 @@ class OverlayWidget(QWidget):
         enemy_color = chess.BLACK if turn_color == chess.WHITE else chess.WHITE
 
         # ---------------------------------------------------------------------
-        # 1. Clean Tactical Accents (Hanging pieces & King check)
+        # 1. Clean Tactical Accents (Hanging pieces, Motifs, Trapped pieces)
         # ---------------------------------------------------------------------
         try:
-            # Hanging pieces (Radiant Bright Orange #FF6D00: thin dashed perimeter & corner brackets)
+            # Hanging pieces (Radiant Bright Orange: thin dashed perimeter & corner brackets)
             for color_key in (chess.WHITE, chess.BLACK):
                 for h in rep.hanging.get(color_key, []):
                     h_rect = self._get_square_rect(h.square)
-                    p.setPen(QPen(QColor(255, 109, 0, 200), 1.8, Qt.PenStyle.DashLine))
+                    p.setPen(QPen(THEME.HANGING_OUTLINE, 1.8, Qt.PenStyle.DashLine))
                     p.drawRect(h_rect)
-                    self._draw_corner_brackets(p, h_rect, QColor(255, 109, 0, 240), bracket_len=10.0, pen_width=2.0)
+                    self._draw_corner_brackets(p, h_rect, THEME.HANGING, bracket_len=THEME.BRACKET_LEN, pen_width=THEME.BRACKET_PEN_WIDTH)
 
-            # Tactical Motifs (Electric Purple #D500F9 corner brackets on target squares)
+            # Tactical Motifs (Electric Purple corner brackets on target squares)
             for m in rep.motifs:
                 for tgt_sq in m.target_squares:
                     tgt_rect = self._get_square_rect(tgt_sq)
-                    self._draw_corner_brackets(p, tgt_rect, QColor(213, 0, 249, 190), bracket_len=9.0, pen_width=1.8)
+                    self._draw_corner_brackets(p, tgt_rect, THEME.MOTIF_DASHED, bracket_len=9.0, pen_width=1.8)
 
-            # Trapped Pieces (Ice Cyan #00E5FF: thin dashed perimeter & corner brackets)
+            # Trapped Pieces (Ice Cyan: thin dashed perimeter & corner brackets)
             trapped_map = getattr(rep, 'trapped_pieces', {})
             for color_key in (chess.WHITE, chess.BLACK):
                 for tp in trapped_map.get(color_key, []):
                     tp_rect = self._get_square_rect(tp.square)
-                    p.setPen(QPen(QColor(0, 229, 255, 140), 1.5, Qt.PenStyle.DashLine))
+                    p.setPen(QPen(THEME.TRAPPED_OUTLINE, 1.5, Qt.PenStyle.DashLine))
                     p.drawRect(tp_rect)
-                    self._draw_corner_brackets(p, tp_rect, QColor(0, 229, 255, 240), bracket_len=11.0, pen_width=2.2)
+                    self._draw_corner_brackets(p, tp_rect, THEME.TRAPPED, bracket_len=THEME.BRACKET_LEN, pen_width=THEME.BRACKET_PEN_WIDTH)
         except Exception as exc:
             logger.debug("Tactical accents paint error: %s", exc)
 
         # ---------------------------------------------------------------------
-        # 2. Every Single Blunder Move for Active Turn (Crimson Red #FF1744 - Subtle & Thin)
+        # 2. Every Single Blunder Move for Active Turn (Crimson Red - Subtle & Thin)
         # ---------------------------------------------------------------------
         try:
             all_blunders = rep.blunders.get(turn_color, []) if hasattr(rep, 'blunders') else []
             for b in all_blunders:
                 fx, fy = self._get_square_centre(b.move.from_square)
                 tx, ty = self._get_square_centre(b.move.to_square)
-                self._draw_single_arrow(p, fx, fy, tx, ty, QColor(255, 23, 68, 110), False, width_mult=0.55)
+                self._draw_single_arrow(p, fx, fy, tx, ty, THEME.BLUNDER, False, width_mult=THEME.WIDTH_BLUNDER)
         except Exception as exc:
             logger.debug("Blunders paint error: %s", exc)
 
         # ---------------------------------------------------------------------
-        # 3. Direct Threat & Attack Arrows on Hanging Pieces (Radiant Orange #FF6D00)
+        # 3. Direct Threat & Attack Arrows on Hanging Pieces (Radiant Orange)
         # ---------------------------------------------------------------------
         try:
             # Undefended friendly pieces: arrows from enemy attackers
@@ -267,7 +264,7 @@ class OverlayWidget(QWidget):
                 for att_sq in att_list:
                     fx, fy = self._get_square_centre(att_sq)
                     tx, ty = self._get_square_centre(h.square)
-                    self._draw_single_arrow(p, fx, fy, tx, ty, QColor(255, 109, 0, 230), False, width_mult=1.1)
+                    self._draw_single_arrow(p, fx, fy, tx, ty, THEME.HANGING, False, width_mult=THEME.WIDTH_HANGING)
 
             # Undefended enemy pieces: arrows from friendly attackers
             for eh in rep.hanging.get(enemy_color, []):
@@ -277,7 +274,7 @@ class OverlayWidget(QWidget):
                     if piece and piece.color == turn_color:
                         fx, fy = self._get_square_centre(att_sq)
                         tx, ty = self._get_square_centre(eh.square)
-                        self._draw_single_arrow(p, fx, fy, tx, ty, QColor(255, 109, 0, 190), False, width_mult=1.0)
+                        self._draw_single_arrow(p, fx, fy, tx, ty, THEME.HANGING_OUTLINE, False, width_mult=THEME.WIDTH_STANDARD)
         except Exception as exc:
             logger.debug("Hanging pieces paint error: %s", exc)
 
@@ -290,7 +287,7 @@ class OverlayWidget(QWidget):
                 if m.motif_type == MotifType.FORK:
                     for tgt_sq in m.target_squares:
                         tx, ty = self._get_square_centre(tgt_sq)
-                        self._draw_single_arrow(p, fx, fy, tx, ty, QColor(213, 0, 249, 245), False, width_mult=1.25)
+                        self._draw_single_arrow(p, fx, fy, tx, ty, THEME.MOTIF, False, width_mult=THEME.WIDTH_FORK)
 
                 elif m.motif_type in (MotifType.ABSOLUTE_PIN, MotifType.RELATIVE_PIN):
                     # Pinner attacks pinned piece (solid), continuing through to shielded King/Queen (dashed line of fire)
@@ -298,11 +295,11 @@ class OverlayWidget(QWidget):
                         pinned_sq, shielded_sq = m.target_squares[0], m.target_squares[1]
                         px, py = self._get_square_centre(pinned_sq)
                         sx, sy = self._get_square_centre(shielded_sq)
-                        self._draw_single_arrow(p, fx, fy, px, py, QColor(213, 0, 249, 240), False, width_mult=1.2)
-                        self._draw_single_arrow(p, px, py, sx, sy, QColor(213, 0, 249, 190), False, width_mult=0.9, is_dashed=True)
+                        self._draw_single_arrow(p, fx, fy, px, py, THEME.MOTIF, False, width_mult=THEME.WIDTH_MOTIF)
+                        self._draw_single_arrow(p, px, py, sx, sy, THEME.MOTIF_DASHED, False, width_mult=THEME.WIDTH_XRAY, is_dashed=True)
                     elif m.target_squares:
                         tx, ty = self._get_square_centre(m.target_squares[0])
-                        self._draw_single_arrow(p, fx, fy, tx, ty, QColor(213, 0, 249, 230), False, width_mult=1.15)
+                        self._draw_single_arrow(p, fx, fy, tx, ty, THEME.MOTIF, False, width_mult=THEME.WIDTH_MOTIF)
 
                 elif m.motif_type == MotifType.SKEWER:
                     # Skewer attacks front piece (solid), continuing through to rear piece (dashed)
@@ -310,11 +307,11 @@ class OverlayWidget(QWidget):
                         front_sq, back_sq = m.target_squares[0], m.target_squares[1]
                         fx_front, fy_front = self._get_square_centre(front_sq)
                         bx_back, by_back = self._get_square_centre(back_sq)
-                        self._draw_single_arrow(p, fx, fy, fx_front, fy_front, QColor(213, 0, 249, 240), False, width_mult=1.2)
-                        self._draw_single_arrow(p, fx_front, fy_front, bx_back, by_back, QColor(213, 0, 249, 190), False, width_mult=0.9, is_dashed=True)
+                        self._draw_single_arrow(p, fx, fy, fx_front, fy_front, THEME.MOTIF, False, width_mult=THEME.WIDTH_MOTIF)
+                        self._draw_single_arrow(p, fx_front, fy_front, bx_back, by_back, THEME.MOTIF_DASHED, False, width_mult=THEME.WIDTH_XRAY, is_dashed=True)
                     elif m.target_squares:
                         tx, ty = self._get_square_centre(m.target_squares[0])
-                        self._draw_single_arrow(p, fx, fy, tx, ty, QColor(213, 0, 249, 230), False, width_mult=1.15)
+                        self._draw_single_arrow(p, fx, fy, tx, ty, THEME.MOTIF, False, width_mult=THEME.WIDTH_MOTIF)
 
                 elif m.motif_type in (MotifType.DISCOVERED_ATTACK, MotifType.DISCOVERED_CHECK):
                     # In discovered attacks: target_squares=(slider_square, target_square), source_square=masking_square
@@ -323,29 +320,29 @@ class OverlayWidget(QWidget):
                         sx, sy = self._get_square_centre(slider_sq)
                         tx, ty = self._get_square_centre(tgt_sq)
                         # Dashed unveiled ray from slider to target
-                        self._draw_single_arrow(p, sx, sy, tx, ty, QColor(213, 0, 249, 220), False, width_mult=1.15, is_dashed=True)
+                        self._draw_single_arrow(p, sx, sy, tx, ty, THEME.MOTIF, False, width_mult=THEME.WIDTH_MOTIF, is_dashed=True)
                         # Corner brackets highlighting the masking piece that should step away
                         mask_rect = self._get_square_rect(m.source_square)
-                        self._draw_corner_brackets(p, mask_rect, QColor(213, 0, 249, 235), bracket_len=11.0, pen_width=2.2)
+                        self._draw_corner_brackets(p, mask_rect, THEME.MOTIF, bracket_len=THEME.BRACKET_LEN, pen_width=THEME.BRACKET_PEN_WIDTH)
 
                 elif m.motif_type == MotifType.OVERLOADED_DEFENDER:
                     # Overloaded piece is source_square; draw dashed defense connections to its defended pieces
                     for tgt_sq in m.target_squares:
                         tx, ty = self._get_square_centre(tgt_sq)
-                        self._draw_single_arrow(p, fx, fy, tx, ty, QColor(0, 176, 255, 210), True, width_mult=0.9, is_dashed=True)
+                        self._draw_single_arrow(p, fx, fy, tx, ty, THEME.DEFENSE, True, width_mult=THEME.WIDTH_XRAY, is_dashed=True)
                     ov_rect = self._get_square_rect(m.source_square)
-                    self._draw_corner_brackets(p, ov_rect, QColor(0, 176, 255, 240), bracket_len=10.0, pen_width=2.0)
+                    self._draw_corner_brackets(p, ov_rect, THEME.DEFENSE, bracket_len=10.0, pen_width=2.0)
 
                 elif m.motif_type == MotifType.BACK_RANK_WEAKNESS:
                     # Infiltrating piece attacking the back rank towards the King
                     for tgt_sq in m.target_squares:
                         tx, ty = self._get_square_centre(tgt_sq)
-                        self._draw_single_arrow(p, fx, fy, tx, ty, QColor(255, 23, 68, 220), False, width_mult=1.2)
+                        self._draw_single_arrow(p, fx, fy, tx, ty, THEME.BACK_RANK, False, width_mult=THEME.WIDTH_MOTIF)
         except Exception as exc:
             logger.debug("Motifs paint error: %s", exc)
 
         # ---------------------------------------------------------------------
-        # 5. Slider X-Ray Rays (Ice Cyan #00E5FF: Dashed Lines of Force through Obstacles)
+        # 5. Slider X-Ray Rays (Ice Cyan: Dashed Lines of Force through Obstacles)
         # ---------------------------------------------------------------------
         try:
             # Prevent duplicate rays where pins, skewers, or discovered attacks are already drawn
@@ -369,23 +366,23 @@ class OverlayWidget(QWidget):
                 # Thin, elegant dashed laser ray from slider piercing through obstacle to target
                 self._draw_single_arrow(
                     p, sx, sy, tx, ty,
-                    QColor(0, 229, 255, 160),
+                    THEME.XRAY,
                     False,
-                    width_mult=0.85,
+                    width_mult=THEME.WIDTH_XRAY,
                     is_dashed=True,
                 )
         except Exception as exc:
             logger.debug("X-Ray rays paint error: %s", exc)
 
         # ---------------------------------------------------------------------
-        # 6. Winning Trades for Active Turn (Vivid Emerald Green #00E676: SEE > 0)
+        # 6. Winning Trades for Active Turn (Vivid Emerald Green: SEE > 0)
         # ---------------------------------------------------------------------
         try:
             fav_captures = rep.favorable_captures(turn_color)
             for ex in fav_captures:
                 fx, fy = self._get_square_centre(ex.move.from_square)
                 tx, ty = self._get_square_centre(ex.move.to_square)
-                self._draw_single_arrow(p, fx, fy, tx, ty, QColor(0, 230, 118, 255), False, width_mult=1.35)
+                self._draw_single_arrow(p, fx, fy, tx, ty, THEME.WINNING_TRADE, False, width_mult=THEME.WIDTH_WINNING)
         except Exception as exc:
             logger.debug("Winning trades paint error: %s", exc)
 
@@ -415,17 +412,14 @@ class OverlayWidget(QWidget):
             rect = self._get_square_rect(sq_idx)
 
             if is_player and is_enemy:
-                # Contested square (both sides can capture/defend here)
-                fill_color = QColor(180, 75, 240, 65)     # rich violet
-                border_color = QColor(210, 100, 255, 185)
+                fill_color = THEME.SQUARE_CONTESTED
+                border_color = THEME.SQUARE_CONTESTED_BORDER
             elif is_player:
-                # Player capture/defense square (Blue)
-                fill_color = QColor(45, 145, 255, 60)     # rich blue
-                border_color = QColor(60, 160, 255, 185)
+                fill_color = THEME.SQUARE_PLAYER
+                border_color = THEME.SQUARE_PLAYER_BORDER
             else:
-                # Enemy capture/defense square (Red)
-                fill_color = QColor(245, 55, 55, 60)      # rich red
-                border_color = QColor(255, 75, 75, 185)
+                fill_color = THEME.SQUARE_ENEMY
+                border_color = THEME.SQUARE_ENEMY_BORDER
 
             p.fillRect(rect, fill_color)
             pen = QPen(border_color, 1.5)
@@ -464,7 +458,7 @@ class OverlayWidget(QWidget):
                     ty += (dx / dist) * fan_offset
 
             is_def = getattr(c, 'is_defense', False)
-            arrow_color = QColor(41, 121, 255, 190) if is_def else color
+            arrow_color = THEME.DEFENSE if is_def else color
 
             self._draw_single_arrow(p, fx, fy, tx, ty, arrow_color, is_def)
 
@@ -494,11 +488,11 @@ class OverlayWidget(QWidget):
         head_half = max(4.0, sq * cfg.head_width_ratio / 2.0 * width_mult)
 
         # Start arrow away from piece center so piece remains visible
-        start_offset = sq * 0.26
+        start_offset = sq * THEME.START_OFFSET_RATIO
         sx, sy = x1 + ux * start_offset, y1 + uy * start_offset
 
         # End arrow before target center so target piece glyph remains visible
-        end_offset = sq * 0.24
+        end_offset = sq * THEME.END_OFFSET_RATIO
         target_x, target_y = x2 - ux * end_offset, y2 - uy * end_offset
 
         shaft_end_x = target_x - ux * head_len
@@ -518,7 +512,7 @@ class OverlayWidget(QWidget):
             p.drawLine(QPointF(sx, sy), QPointF(shaft_end_x, shaft_end_y))
 
             # Arrowhead with dark border
-            outline_pen = QPen(QColor(10, 14, 20, 220), 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+            outline_pen = QPen(THEME.ARROW_OUTLINE, 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
             p.setPen(outline_pen)
             p.setBrush(QBrush(color))
             p.drawPolygon(head_poly)
@@ -533,49 +527,16 @@ class OverlayWidget(QWidget):
 
             # Origin dot
             origin_radius = max(2.5, sq * 0.05 * width_mult)
-            p.setPen(QPen(QColor(10, 14, 20, 200), 1.0))
+            p.setPen(QPen(THEME.ARROW_ORIGIN_PEN, 1.0))
             p.setBrush(QBrush(color))
             p.drawEllipse(QPointF(sx, sy), origin_radius, origin_radius)
 
             # High-contrast dark outline around the arrow
-            outline_pen = QPen(QColor(10, 14, 20, 220), 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+            outline_pen = QPen(THEME.ARROW_OUTLINE, 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
             p.setPen(outline_pen)
             p.setBrush(QBrush(color))
             p.drawPolygon(shaft_poly)
             p.drawPolygon(head_poly)
-
-    # -------------------------------------------------------------------------
-    # HUD
-    # -------------------------------------------------------------------------
-
-    def _draw_hud(self, p: QPainter, player_count: int, enemy_count: int) -> None:
-        cfg = self._config
-        lines = [
-            f"You: {player_count} arrows",
-            f"Enemy: {enemy_count} arrows",
-        ]
-        if self._status:
-            lines.append(self._status)
-
-        font = QFont("Consolas", 8)
-        font.setBold(True)
-        p.setFont(font)
-
-        line_h = 13
-        pad = 4
-        box_w = 140
-        box_h = len(lines) * line_h + pad * 2
-
-        p.fillRect(QRectF(0, 0, box_w, box_h), QColor(10, 14, 20, 180))
-
-        for i, line in enumerate(lines):
-            if i == 0:
-                p.setPen(QColor(*cfg.white_color[:3]))
-            elif i == 1:
-                p.setPen(QColor(*cfg.black_color[:3]))
-            else:
-                p.setPen(QColor(180, 190, 205))
-            p.drawText(pad + 2, pad + (i + 1) * line_h - 2, line)
 
     # -------------------------------------------------------------------------
     # Exact Sub-Pixel Coordinates & Centering

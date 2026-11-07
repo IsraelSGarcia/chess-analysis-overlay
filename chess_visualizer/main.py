@@ -45,160 +45,21 @@ def _minimize_console() -> None:
         pass
 
 
-def is_valid_recognized_board(board: chess.Board) -> bool:
-    """
-    Validate that a recognized board has plausible chess piece counts.
-    Must contain exactly 1 White King, 1 Black King, <= 16 pieces per side,
-    <= 8 pawns per side, and no pawns on the back ranks (rank 1 or rank 8).
-    Prevents false-positive flickering on arbitrary desktop windows and
-    guards against misaligned crop corruption.
-    """
-    piece_map = board.piece_map()
-    pieces = list(piece_map.values())
-    if len(pieces) < 2:
-        return False
+from chess_visualizer.validator import is_valid_recognized_board
+from chess_visualizer.transitions import (
+    determine_turn_from_move,
+    sanitize_board_transition,
+    generate_candidate_moves,
+    _generate_candidate_moves,
+)
 
-    white_kings = sum(1 for p in pieces if p.piece_type == chess.KING and p.color == chess.WHITE)
-    black_kings = sum(1 for p in pieces if p.piece_type == chess.KING and p.color == chess.BLACK)
-    if white_kings != 1 or black_kings != 1:
-        return False
-
-    white_pieces = sum(1 for p in pieces if p.color == chess.WHITE)
-    black_pieces = sum(1 for p in pieces if p.color == chess.BLACK)
-    if white_pieces > 16 or black_pieces > 16:
-        return False
-
-    white_pawns = sum(1 for p in pieces if p.piece_type == chess.PAWN and p.color == chess.WHITE)
-    black_pawns = sum(1 for p in pieces if p.piece_type == chess.PAWN and p.color == chess.BLACK)
-    if white_pawns > 8 or black_pawns > 8:
-        return False
-
-    for sq, p in piece_map.items():
-        if p.piece_type == chess.PAWN:
-            rank = chess.square_rank(sq)
-            if rank == 0 or rank == 7:
-                return False
-
-    return True
-
-
-def _generate_candidate_moves(board: chess.Board):
-    """Generate all legal moves, explicitly considering potential en-passant opportunities."""
-    yield from board.legal_moves
-    rank = 4 if board.turn == chess.WHITE else 3
-    ep_dest_rank = 5 if board.turn == chess.WHITE else 2
-    for file in range(8):
-        sq = chess.square(file, rank)
-        p = board.piece_at(sq)
-        if p and p.piece_type == chess.PAWN and p.color == board.turn:
-            for adj_file in (file - 1, file + 1):
-                if 0 <= adj_file <= 7:
-                    adj_sq = chess.square(adj_file, rank)
-                    adj_p = board.piece_at(adj_sq)
-                    if adj_p and adj_p.piece_type == chess.PAWN and adj_p.color != board.turn:
-                        b_ep = board.copy(stack=False)
-                        b_ep.ep_square = chess.square(adj_file, ep_dest_rank)
-                        for m in b_ep.legal_moves:
-                            if m.from_square == sq and m.to_square == b_ep.ep_square:
-                                yield m
-
-
-def determine_turn_from_move(prev_board: chess.Board, new_board: chess.Board) -> Optional[chess.Color]:
-    """
-    Given consecutive board positions, determine whose turn it is now based on whether
-    a forward move was played or a previous move was undone.
-
-    Returns
-    -------
-    chess.BLACK / chess.WHITE:
-        - If a forward move was played by White, returns chess.BLACK (and vice versa).
-        - If a previous move by White was undone/reversed, returns chess.WHITE (and vice versa).
-    None:
-        If no single legal transition was identified (e.g. multi-move navigation, reset, or dots).
-    """
-    prev_map = prev_board.piece_map()
-    new_map = new_board.piece_map()
-
-    if prev_map == new_map:
-        return None
-
-    # Check forward move from prev_board (only prev_board.turn can move forward)
-    p_test = prev_board.copy(stack=False)
-    p_test.turn = prev_board.turn
-    for m in _generate_candidate_moves(p_test):
-        test = p_test.copy(stack=False)
-        test.push(m)
-        if test.piece_map() == new_map:
-            return not prev_board.turn
-
-    # Check undo / reverse move from new_board to prev_board
-    # In new_board, mover_turn played m to reach prev_board -> in new_board, it is mover_turn's turn!
-    for mover_turn in (not prev_board.turn, prev_board.turn):
-        n_test = new_board.copy(stack=False)
-        n_test.turn = mover_turn
-        for m in _generate_candidate_moves(n_test):
-            test = n_test.copy(stack=False)
-            test.push(m)
-            if test.piece_map() == prev_map:
-                return mover_turn
-
-    # Fallback to piece diff heuristic if legal moves didn't match (e.g. board crop slight offset)
-    prev_w = {sq: p for sq, p in prev_map.items() if p.color == chess.WHITE}
-    new_w = {sq: p for sq, p in new_map.items() if p.color == chess.WHITE}
-    prev_b = {sq: p for sq, p in prev_map.items() if p.color == chess.BLACK}
-    new_b = {sq: p for sq, p in new_map.items() if p.color == chess.BLACK}
-
-    w_vacated = set(prev_w.keys()) - set(new_w.keys())
-    b_vacated = set(prev_b.keys()) - set(new_b.keys())
-    w_new_squares = set(new_w.keys()) - set(prev_w.keys())
-    b_new_squares = set(new_b.keys()) - set(prev_b.keys())
-
-    white_moved = bool(w_vacated) and bool(w_new_squares) and not b_new_squares
-    black_moved = bool(b_vacated) and bool(b_new_squares) and not w_new_squares
-
-    if white_moved and not black_moved:
-        return chess.BLACK
-    elif black_moved and not white_moved:
-        return chess.WHITE
-
-    return None
-
-
-def sanitize_board_transition(prev_board: chess.Board, new_board: chess.Board) -> chess.Board:
-    """
-    Ensure physical board state continuity between consecutive frames.
-
-    In chess, pieces NEVER spontaneously materialize on empty squares without
-    a corresponding piece leaving an origin square. When a user clicks a piece
-    on Chess.com / Lichess, move indicator dots on destination squares can occasionally
-    be misclassified as pawns. If new pieces appear while every single established piece
-    from prev_board remains on its exact square, those newly added pieces are identified
-    as click/move dot artifacts and purged.
-    """
-    prev_map = prev_board.piece_map()
-    new_map = new_board.piece_map()
-
-    if prev_map == new_map:
-        return new_board
-
-    # Check for phantom move dot spawn:
-    # All established pieces from prev_board are still present on their exact squares,
-    # but 1 to 6 extra pieces appeared on previously empty squares (e.g. piece clicked).
-    if all(new_map.get(sq) == p for sq, p in prev_map.items()):
-        newly_added = set(new_map.keys()) - set(prev_map.keys())
-        if 0 < len(newly_added) <= 6:
-            clean_board = new_board.copy()
-            for sq in newly_added:
-                clean_board.remove_piece_at(sq)
-            logger.debug(
-                "Sanitized impossible piece spawn on empty squares %s (click/move dot artifacts)",
-                [chess.square_name(s) for s in newly_added],
-            )
-            return clean_board
-
-    # In all other cases (forward moves, capture undos, castling, promotions, navigation),
-    # the new_board piece placements are authentic and must NEVER be deleted.
-    return new_board
+__all__ = [
+    "main",
+    "is_valid_recognized_board",
+    "determine_turn_from_move",
+    "sanitize_board_transition",
+    "_generate_candidate_moves",
+]
 
 
 def _parse_args() -> argparse.Namespace:

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from chess_tactical.report import TacticalReport
 from chess_visualizer.capture import set_window_capture_exclusion
+from chess_visualizer.theme import THEME
 
 
 class HUDPanel(QWidget):
@@ -129,93 +130,45 @@ class HUDPanel(QWidget):
         # -----------------------------------------------------------------
         # Glanceable Badges Grid (1:1 color matched to board annotations)
         # -----------------------------------------------------------------
-        # Urgent Check / Mate Alert (Pure Crimson Red #FF1744)
+        # Urgent Check / Mate Alert (Pure Crimson Red)
         self.lbl_alert = QLabel("")
         self.lbl_alert.setWordWrap(True)
-        self.lbl_alert.setStyleSheet("""
-            background-color: rgba(255, 23, 68, 22);
-            color: #ff1744;
-            border: 1px solid rgba(255, 23, 68, 85);
-            border-radius: 4px;
-            padding: 3px 6px;
-            font-size: 10px;
-            font-weight: 700;
-        """)
+        self.lbl_alert.setStyleSheet(THEME.get_badge_css(THEME.BLUNDER_HEX, bg_alpha=0.22, border_alpha=0.85))
         self.lbl_alert.setVisible(False)
         card_layout.addWidget(self.lbl_alert)
 
-        # Winning Trades Pill (Vivid Emerald Green #00E676)
+        # Winning Trades Pill (Vivid Emerald Green)
         self.lbl_trades = QLabel("")
-        self.lbl_trades.setStyleSheet("""
-            background-color: rgba(0, 230, 118, 18);
-            color: #00e676;
-            border: 1px solid rgba(0, 230, 118, 70);
-            border-radius: 4px;
-            padding: 3px 6px;
-            font-size: 10px;
-            font-weight: 600;
-        """)
         self.lbl_trades.setWordWrap(True)
+        self.lbl_trades.setStyleSheet(THEME.get_badge_css(THEME.WINNING_TRADE_HEX))
         self.lbl_trades.setVisible(False)
         card_layout.addWidget(self.lbl_trades)
 
-        # Tactical Motifs Pill (Electric Purple #D500F9: Forks, Pins, Skewers)
+        # Tactical Motifs Pill (Electric Purple: Forks, Pins, Skewers)
         self.lbl_motifs = QLabel("")
-        self.lbl_motifs.setStyleSheet("""
-            background-color: rgba(213, 0, 249, 18);
-            color: #d500f9;
-            border: 1px solid rgba(213, 0, 249, 70);
-            border-radius: 4px;
-            padding: 3px 6px;
-            font-size: 10px;
-            font-weight: 600;
-        """)
         self.lbl_motifs.setWordWrap(True)
+        self.lbl_motifs.setStyleSheet(THEME.get_badge_css(THEME.MOTIF_HEX))
         self.lbl_motifs.setVisible(False)
         card_layout.addWidget(self.lbl_motifs)
 
-        # Hanging Pieces Pill (Radiant Bright Orange #FF6D00)
+        # Hanging Pieces Pill (Radiant Bright Orange)
         self.lbl_hanging = QLabel("")
-        self.lbl_hanging.setStyleSheet("""
-            background-color: rgba(255, 109, 0, 18);
-            color: #ff6d00;
-            border: 1px solid rgba(255, 109, 0, 70);
-            border-radius: 4px;
-            padding: 3px 6px;
-            font-size: 10px;
-            font-weight: 600;
-        """)
         self.lbl_hanging.setWordWrap(True)
+        self.lbl_hanging.setStyleSheet(THEME.get_badge_css(THEME.HANGING_HEX))
         self.lbl_hanging.setVisible(False)
         card_layout.addWidget(self.lbl_hanging)
 
-        # Trapped Pieces Pill (Ice Cyan #00E5FF)
+        # Trapped Pieces Pill (Ice Cyan)
         self.lbl_trapped = QLabel("")
-        self.lbl_trapped.setStyleSheet("""
-            background-color: rgba(0, 229, 255, 18);
-            color: #00e5ff;
-            border: 1px solid rgba(0, 229, 255, 70);
-            border-radius: 4px;
-            padding: 3px 6px;
-            font-size: 10px;
-            font-weight: 600;
-        """)
         self.lbl_trapped.setWordWrap(True)
+        self.lbl_trapped.setStyleSheet(THEME.get_badge_css(THEME.TRAPPED_HEX))
         self.lbl_trapped.setVisible(False)
         card_layout.addWidget(self.lbl_trapped)
 
-        # Defended Pieces Pill (Sky Blue #00B0FF)
+        # Defended Pieces Pill (Sky Blue)
         self.lbl_defended = QLabel("")
-        self.lbl_defended.setStyleSheet("""
-            background-color: rgba(0, 176, 255, 16);
-            color: #00b0ff;
-            border: 1px solid rgba(0, 176, 255, 60);
-            border-radius: 4px;
-            padding: 3px 6px;
-            font-size: 10px;
-            font-weight: 600;
-        """)
         self.lbl_defended.setWordWrap(True)
+        self.lbl_defended.setStyleSheet(THEME.get_badge_css(THEME.DEFENSE_HEX, bg_alpha=0.16, border_alpha=0.60))
         self.lbl_defended.setVisible(False)
         card_layout.addWidget(self.lbl_defended)
 
