@@ -9,6 +9,7 @@ import unittest
 import chess
 
 from projects.chess_tactical_analyzer.openings.book import (
+    identify_opening,
     identify_opening_from_moves,
     is_opening_phase,
     OpeningInfo,
@@ -66,6 +67,26 @@ class TestOpenings(unittest.TestCase):
 
     def test_identify_empty_moves_returns_none(self):
         self.assertIsNone(identify_opening_from_moves([]))
+
+    def test_identify_from_board_fen_without_move_stack(self):
+        # Starting position with no moves
+        b0 = chess.Board()
+        info0 = identify_opening(b0)
+        self.assertIsNotNone(info0)
+        self.assertIn("Starting Position", info0.name)
+
+        # 1. e4 c5 Sicilian Defense
+        b_sic = chess.Board("rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2")
+        info_sic = identify_opening(b_sic)
+        self.assertIsNotNone(info_sic)
+        self.assertEqual(info_sic.eco, "B20")
+        self.assertIn("Sicilian", info_sic.name)
+
+        # 1. e4 e6 French Defense
+        b_fr = chess.Board("rnbqkbnr/pppp1ppp/4p3/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2")
+        info_fr = identify_opening(b_fr)
+        self.assertIsNotNone(info_fr)
+        self.assertEqual(info_fr.eco, "C00")
 
     def test_opening_phase_detection(self):
         # Starting position is in opening phase

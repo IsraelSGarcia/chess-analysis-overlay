@@ -29,6 +29,7 @@ from projects.chess_tactical_analyzer.xray import XRayRay, find_xray_rays
 from projects.chess_tactical_analyzer.openings import (
     OpeningInfo,
     OpeningTrap,
+    identify_opening,
     identify_opening_from_moves,
     detect_opening_traps,
     is_opening_phase,
@@ -218,10 +219,8 @@ def generate_tactical_report(
     xray_rays = find_xray_rays(board)
 
     # 10. Opening analysis & trap recognition
-    opening = None
-    if hasattr(board, 'move_stack') and board.move_stack:
-        uci_moves = [m.uci() for m in board.move_stack]
-        opening = identify_opening_from_moves(uci_moves)
+    tracked_moves = [m.uci() for m in board.move_stack] if (hasattr(board, 'move_stack') and board.move_stack) else None
+    opening = identify_opening(board, uci_moves=tracked_moves)
     opening_traps = detect_opening_traps(board) if is_opening_phase(board) else []
 
     # 11. Endgame geometric principles (Rule of the Square & Opposition)

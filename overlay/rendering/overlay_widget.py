@@ -435,12 +435,13 @@ class OverlayWidget(QWidget):
             return
 
         pos = rep.positional
+        sq_dim = min(self.width(), self.height()) / 8.0
 
         try:
             # 1. Controlled Open and Semi-Open Files (Faint Sky Blue vertical band)
             for of in pos.open_files:
                 col = of.file_idx if not cfg.flipped else 7 - of.file_idx
-                file_rect = QRectF(col * self._sq_size, 0, self._sq_size, 8 * self._sq_size)
+                file_rect = QRectF(col * sq_dim, 0, sq_dim, 8 * sq_dim)
                 p.fillRect(file_rect, THEME.OPEN_FILE)
                 p.setPen(QPen(THEME.OPEN_FILE_BORDER, 1.0, Qt.PenStyle.DotLine))
                 p.drawRect(file_rect)

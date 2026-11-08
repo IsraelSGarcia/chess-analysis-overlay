@@ -221,6 +221,13 @@ class HUDPanel(QWidget):
     # Update from TacticalReport
     # -------------------------------------------------------------------------
 
+    def set_mode(self, mode: str) -> None:
+        """Update header title and context depending on active analysis mode."""
+        if mode == "positional":
+            self.lbl_title.setText("Positional Intelligence")
+        else:
+            self.lbl_title.setText("Tactical Intelligence")
+
     def update_report(self, report: Optional[TacticalReport]) -> None:
         """Update HUD UI elements from a TacticalReport."""
         if report is None:
@@ -353,16 +360,34 @@ class HUDPanel(QWidget):
 
         # 6c. Positional Structure & Outposts
         pos = getattr(report, 'positional', None)
-        if pos and (pos.outposts or any(pos.pawn_structure.isolated.values()) or any(b.is_bad for b in pos.bishops)):
+        if pos:
             pos_parts = []
             if pos.outposts:
-                pos_parts.append(f"Outposts: {', '.join(o.square_name for o in pos.outposts[:2])}")
-            iso_w = pos.pawn_structure.isolated.get(chess.WHITE, [])
-            iso_b = pos.pawn_structure.isolated.get(chess.BLACK, [])
-            if iso_w or iso_b:
-                pos_parts.append(f"Isolated: {', '.join(chess.square_name(s) for s in (iso_w + iso_b)[:2])}")
+                out_strs = [f"{chess.piece_symbol(o.occupant_piece_type).upper() if o.occupant_piece_type else ''}@{o.square_name}" for o in pos.outposts[:2]]
+                pos_parts.append(f"Outposts ({', '.join(out_strs)})")
+            # Open and semi-open files
+            open_f = [of.file_letter for of in pos.open_files if of.is_completely_open]
+            if open_f:
+                pos_parts.append(f"Open: {', '.join(open_f)} file")
+            # Weak pawns
+            iso = pos.pawn_structure.isolated.get(turn_color, [])
+            dbl = pos.pawn_structure.doubled.get(turn_color, [])
+            if iso:
+                pos_parts.append(f"Isolated @ {', '.join(chess.square_name(s) for s in iso[:2])}")
+            elif dbl:
+                pos_parts.append(f"Doubled @ {chess.square_name(dbl[0])}")
+            # Bad bishops
+            bad_b = [b for b in pos.bishops if b.is_bad and b.color == turn_color]
+            if bad_b:
+                pos_parts.append(f"Bad Bishop ({bad_b[0].square_name})")
+            # Space control
+            sp_own = pos.space_control.get(turn_color, 0)
+            sp_opp = pos.space_control.get(not turn_color, 0)
+            if sp_own > 0 or sp_opp > 0:
+                pos_parts.append(f"Space ({sp_own} vs {sp_opp})")
+
             if pos_parts:
-                self.lbl_positional.setText(f"🏛️ Structure: {' | '.join(pos_parts)}")
+                self.lbl_positional.setText(f"🏛️ Structure: {' | '.join(pos_parts[:3])}")
                 self.lbl_positional.setVisible(True)
             else:
                 self.lbl_positional.setVisible(False)

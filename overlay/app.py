@@ -515,9 +515,10 @@ def main() -> None:
     def show_all_ui():
         if settings.overlay_visible:
             overlay.show()
-        if settings.active_mode == "tactics" and settings.show_hud and hud_panel:
+        if settings.active_mode in ("tactics", "positional") and settings.show_hud and hud_panel:
+            hud_panel.set_mode(settings.active_mode)
             hud_panel.show()
-        elif settings.active_mode != "tactics" and hud_panel:
+        elif settings.active_mode not in ("tactics", "positional") and hud_panel:
             hud_panel.hide()
         if control_bar:
             control_bar.show()

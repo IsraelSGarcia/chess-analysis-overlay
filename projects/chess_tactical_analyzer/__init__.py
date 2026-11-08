@@ -44,6 +44,7 @@ from .forcing_search import TacticalSequence, calculate_tactical_sequences
 from .openings import (
     OpeningInfo,
     OpeningTrap,
+    identify_opening,
     identify_opening_from_moves,
     detect_opening_traps,
     is_opening_phase,
@@ -109,6 +110,7 @@ __all__ = [
     "generate_tactical_report",
     "OpeningInfo",
     "OpeningTrap",
+    "identify_opening",
     "identify_opening_from_moves",
     "detect_opening_traps",
     "is_opening_phase",

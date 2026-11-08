@@ -23,10 +23,5 @@ if %ERRORLEVEL% NEQ 0 (
     )
 )
 
-echo [*] Starting Chess Analysis Overlay...
-python main.py %*
-if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo [ERROR] Application exited with error code %ERRORLEVEL%.
-    pause
-)
+start "" pythonw main.py %*
+exit

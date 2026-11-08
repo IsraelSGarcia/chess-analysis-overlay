@@ -179,6 +179,17 @@ OPENING_SIGNATURES: List[Tuple[Tuple[str, ...], str, str, str]] = [
     (("f2f4",), "A02", "Bird's Opening", ""),
     (("b2b3",), "A01", "Nimzo-Larsen Attack", ""),
     (("d2d4", "f7f5"), "A80", "Dutch Defense", ""),
+    # -------------------------------------------------------------------------
+    # Single-Move Signatures (1. e4, 1. d4, 1. c4, 1. Nf3, etc.)
+    # -------------------------------------------------------------------------
+    (("e2e4",), "B00", "King's Pawn Opening", ""),
+    (("d2d4",), "A40", "Queen's Pawn Opening", ""),
+    (("c2c4",), "A10", "English Opening", ""),
+    (("g1f3",), "A04", "Réti Opening", ""),
+    (("f2f4",), "A02", "Bird's Opening", ""),
+    (("b2b3",), "A01", "Nimzo-Larsen Attack", ""),
+    (("g2g3",), "A00", "Hungarian Opening", ""),
+    (("b2b4",), "A00", "Sokolsky Opening", ""),
 ]
 
 # Sort signatures from longest sequence to shortest to match most specific variation first
@@ -215,3 +226,50 @@ def is_opening_phase(board: chess.Board) -> bool:
     if len(pieces) < 22:
         return False
     return True
+
+
+# -----------------------------------------------------------------------------
+# FEN-to-Opening Mapping (Enables 0-move instant identification from screen FEN)
+# -----------------------------------------------------------------------------
+FEN_TO_OPENING: Dict[str, OpeningInfo] = {}
+
+def _init_fen_map() -> None:
+    """Precompute board FEN positions for all canonical opening variations and prefixes."""
+    for sig_moves, eco, name, var in OPENING_SIGNATURES:
+        b = chess.Board()
+        for i, m in enumerate(sig_moves):
+            try:
+                b.push_uci(m)
+                bf = b.board_fen()
+                if bf not in FEN_TO_OPENING:
+                    info = identify_opening_from_moves(list(sig_moves[:i + 1]))
+                    if not info and len(sig_moves[:i + 1]) == 1:
+                        info = OpeningInfo(eco, name, var, 1)
+                    if info:
+                        FEN_TO_OPENING[bf] = info
+            except Exception:
+                break
+
+    FEN_TO_OPENING[chess.STARTING_BOARD_FEN] = OpeningInfo("---", "Starting Position", "", 0)
+
+_init_fen_map()
+
+
+def identify_opening(board: chess.Board, uci_moves: Optional[List[str]] = None) -> Optional[OpeningInfo]:
+    """
+    Identify opening from move list or directly from board piece placement FEN.
+    Guarantees that opening classification is available even on the first recognized frame.
+    """
+    if uci_moves:
+        info = identify_opening_from_moves(uci_moves)
+        if info:
+            return info
+
+    bf = board.board_fen()
+    if bf in FEN_TO_OPENING:
+        return FEN_TO_OPENING[bf]
+
+    if bf == chess.STARTING_BOARD_FEN:
+        return OpeningInfo("---", "Starting Position", "", 0)
+
+    return None
