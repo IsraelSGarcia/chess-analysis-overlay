@@ -14,7 +14,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from chess_visualizer.recognition import (
+from core.board_recognition.recognition import (
     refine_grid_box,
     detect_chessboard_in_crop,
 )

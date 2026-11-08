@@ -7,7 +7,7 @@ and turn determination using transitions.py.
 
 import unittest
 import chess
-from chess_visualizer.transitions import (
+from core.chess_rules.transitions import (
     determine_turn_from_move,
     sanitize_board_transition,
     generate_candidate_moves,

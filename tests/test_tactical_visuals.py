@@ -12,10 +12,10 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QColor, QPainter, QImage
 from PySide6.QtCore import QRectF
 
-from chess_tactical import generate_tactical_report
-from chess_visualizer.overlay import OverlayConfig
-from chess_visualizer._overlay_widget import OverlayWidget
-from chess_visualizer._hud_panel import HUDPanel
+from projects.chess_tactical_analyzer import generate_tactical_report
+from overlay.configuration.overlay_config import OverlayConfig
+from overlay.rendering.overlay_widget import OverlayWidget
+from overlay.interface.hud_panel import HUDPanel
 
 app = QApplication.instance() or QApplication(sys.argv)
 

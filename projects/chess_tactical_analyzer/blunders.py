@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from typing import List, Optional
 import chess
 
-from chess_tactical.see import evaluate_exchange
-from chess_tactical.values import get_piece_value
+from core.shared_analysis.see import evaluate_exchange
+from core.shared_analysis.values import get_piece_value
 
 
 @dataclass(frozen=True)

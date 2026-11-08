@@ -17,8 +17,8 @@ from enum import Enum
 from typing import List, Optional, Set, Tuple
 import chess
 
-from chess_tactical.values import get_piece_value, PIECE_VALUES
-from chess_tactical.attack_defense import AttackDefenseMap, PinInfo, DiscoveredAttackInfo, OverloadedPieceInfo
+from core.shared_analysis.values import get_piece_value, PIECE_VALUES
+from core.shared_analysis.attack_defense import AttackDefenseMap, PinInfo, DiscoveredAttackInfo, OverloadedPieceInfo
 
 
 class MotifType(Enum):
@@ -30,6 +30,10 @@ class MotifType(Enum):
     DISCOVERED_CHECK = "discovered_check"
     OVERLOADED_DEFENDER = "overloaded_defender"
     BACK_RANK_WEAKNESS = "back_rank_weakness"
+    MATING_THREAT = "mating_threat"
+    REMOVING_DEFENDER = "removing_defender"
+    DEFLECTION = "deflection"
+    DECOY = "decoy"
 
 
 @dataclass(frozen=True)
@@ -248,6 +252,97 @@ def find_back_rank_weaknesses(board: chess.Board) -> List[TacticalMotif]:
     return weaknesses
 
 
+
+def find_mating_threats(board: chess.Board) -> List[TacticalMotif]:
+    """Detect immediate mating threats: legal moves delivering checkmate."""
+    threats: List[TacticalMotif] = []
+    for move in board.legal_moves:
+        board.push(move)
+        is_mate = board.is_checkmate()
+        board.pop()
+        if is_mate:
+            piece = board.piece_at(move.from_square)
+            p_sym = piece.symbol() if piece else "?"
+            threats.append(TacticalMotif(
+                motif_type=MotifType.MATING_THREAT,
+                color=board.turn,
+                source_square=move.from_square,
+                target_squares=(move.to_square,),
+                description=f"{p_sym} delivers immediate checkmate on {chess.square_name(move.to_square)}",
+            ))
+    return threats
+
+
+def find_removing_the_defender(board: chess.Board, attack_map: AttackDefenseMap) -> List[TacticalMotif]:
+    """Detect undermining/removing the defender: attacking the sole protector of a piece."""
+    motifs: List[TacticalMotif] = []
+    for target_sq in chess.SQUARES:
+        target_piece = board.piece_at(target_sq)
+        if not target_piece:
+            continue
+        color = target_piece.color
+        enemy_color = not color
+        target_val = get_piece_value(target_piece.piece_type)
+        if target_val < 3:
+            continue
+        ctrl = attack_map.squares[target_sq]
+        defenders = ctrl.defenders_for(color)
+        attackers = ctrl.attackers_for(enemy_color)
+        if len(defenders) == 1 and len(attackers) >= 1:
+            sole_def_sq = defenders[0]
+            sole_def_piece = board.piece_at(sole_def_sq)
+            if not sole_def_piece:
+                continue
+            sole_ctrl = attack_map.squares[sole_def_sq]
+            def_attackers = sole_ctrl.attackers_for(enemy_color)
+            for att_sq in def_attackers:
+                att_piece = board.piece_at(att_sq)
+                if att_piece and att_piece.color == enemy_color:
+                    motifs.append(TacticalMotif(
+                        motif_type=MotifType.REMOVING_DEFENDER,
+                        color=enemy_color,
+                        source_square=att_sq,
+                        target_squares=(sole_def_sq, target_sq),
+                        description=(
+                            f"{att_piece.symbol()} undermines sole defender {sole_def_piece.symbol()}@{chess.square_name(sole_def_sq)} "
+                            f"protecting {target_piece.symbol()}@{chess.square_name(target_sq)}"
+                        ),
+                    ))
+                    break
+    return motifs
+
+
+def find_deflection_tactics(board: chess.Board, attack_map: AttackDefenseMap) -> List[TacticalMotif]:
+    """Detect deflection opportunities: driving away a key protector from another piece."""
+    deflections: List[TacticalMotif] = []
+    for sq in chess.SQUARES:
+        p = board.piece_at(sq)
+        if not p:
+            continue
+        color = p.color
+        enemy_color = not color
+        ctrl = attack_map.squares[sq]
+        defenders = ctrl.defenders_for(color)
+        attackers = ctrl.attackers_for(enemy_color)
+        if len(attackers) >= 1 and len(defenders) >= 1:
+            for att_sq in attackers:
+                att_p = board.piece_at(att_sq)
+                if att_p and get_piece_value(att_p.piece_type) <= get_piece_value(p.piece_type):
+                    for other_sq in chess.SQUARES:
+                        if other_sq == sq:
+                            continue
+                        other_p = board.piece_at(other_sq)
+                        if other_p and other_p.color == color and sq in attack_map.squares[other_sq].defenders_for(color):
+                            deflections.append(TacticalMotif(
+                                motif_type=MotifType.DEFLECTION,
+                                color=enemy_color,
+                                source_square=att_sq,
+                                target_squares=(sq, other_sq),
+                                description=f"{att_p.symbol()} deflecting {p.symbol()}@{chess.square_name(sq)} away from {other_p.symbol()}@{chess.square_name(other_sq)}",
+                            ))
+                            break
+    return deflections
+
 def scan_all_motifs(
     board: chess.Board,
     attack_map: Optional[AttackDefenseMap] = None,
@@ -328,5 +423,14 @@ def scan_all_motifs(
 
     # 6. Back-rank weaknesses
     motifs.extend(find_back_rank_weaknesses(board))
+
+    # 7. Mating threats
+    motifs.extend(find_mating_threats(board))
+
+    # 8. Removing the defender
+    motifs.extend(find_removing_the_defender(board, attack_map))
+
+    # 9. Deflection
+    motifs.extend(find_deflection_tactics(board, attack_map))
 
     return motifs

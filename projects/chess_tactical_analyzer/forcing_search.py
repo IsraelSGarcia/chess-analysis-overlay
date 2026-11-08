@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 import chess
 
-from chess_tactical.values import get_piece_value, PIECE_VALUES
-from chess_tactical.see import evaluate_exchange
+from core.shared_analysis.values import get_piece_value, PIECE_VALUES
+from core.shared_analysis.see import evaluate_exchange
 
 
 MATE_SCORE = 100000

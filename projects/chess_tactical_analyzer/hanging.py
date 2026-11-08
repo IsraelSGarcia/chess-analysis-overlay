@@ -13,9 +13,9 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 import chess
 
-from chess_tactical.values import get_piece_value
-from chess_tactical.attack_defense import AttackDefenseMap
-from chess_tactical.see import evaluate_exchange
+from core.shared_analysis.values import get_piece_value
+from core.shared_analysis.attack_defense import AttackDefenseMap
+from core.shared_analysis.see import evaluate_exchange
 
 
 @dataclass(frozen=True)

@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 import chess
 
-from chess_tactical.values import (
+from core.shared_analysis.values import (
     ExchangeCategory,
     PIECE_VALUES,
     get_piece_value,

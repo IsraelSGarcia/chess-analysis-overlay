@@ -23,8 +23,8 @@ from PySide6.QtCore import Qt, QRect, QPoint
 from PySide6.QtGui import QPainter, QColor, QPen, QFont, QCursor
 from PySide6.QtWidgets import QApplication, QWidget
 
-from chess_visualizer.capture import ScreenCapture, set_window_capture_exclusion
-from chess_visualizer.recognition import detect_chessboard_in_crop
+from core.board_recognition.capture import ScreenCapture, set_window_capture_exclusion
+from core.board_recognition.recognition import detect_chessboard_in_crop
 
 logger = logging.getLogger(__name__)
 

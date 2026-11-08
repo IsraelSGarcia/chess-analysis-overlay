@@ -7,7 +7,7 @@ Guarantees false-positive prevention and protects against corrupted crops.
 
 import unittest
 import chess
-from chess_visualizer.main import is_valid_recognized_board
+from core.chess_rules.validator import is_valid_recognized_board
 
 
 class TestBoardValidator(unittest.TestCase):

@@ -11,9 +11,9 @@ Run with:
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from chess_visualizer.recognition import Recognizer
-from chess_visualizer.chess_logic import get_all_captures_dict
-from chess_visualizer.settings import Settings
+from core.board_recognition.recognition import Recognizer
+from projects.chess_capture_visualizer.captures import get_all_captures_dict
+from overlay.configuration.settings import Settings
 from PIL import Image
 
 
@@ -47,7 +47,7 @@ def test_captures_from_known_fen():
 
 def test_settings_round_trip():
     import tempfile, json
-    from chess_visualizer.settings import Settings, SETTINGS_PATH
+    from overlay.configuration.settings import Settings, SETTINGS_PATH
     s = Settings(board_region=(50, 100, 640, 640), opacity=0.8)
     s.save()
     s2 = Settings.load()

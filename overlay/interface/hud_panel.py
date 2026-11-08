@@ -21,9 +21,9 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QPushButton,
 )
 
-from chess_tactical.report import TacticalReport
-from chess_visualizer.capture import set_window_capture_exclusion
-from chess_visualizer.theme import THEME
+from projects.chess_tactical_analyzer.report import TacticalReport
+from core.board_recognition.capture import set_window_capture_exclusion
+from overlay.configuration.theme import THEME
 
 
 class HUDPanel(QWidget):

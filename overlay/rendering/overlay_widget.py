@@ -31,9 +31,9 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
-from chess_tactical.motifs import MotifType
-from chess_visualizer.capture import set_window_capture_exclusion
-from chess_visualizer.theme import THEME
+from projects.chess_tactical_analyzer.motifs import MotifType
+from core.board_recognition.capture import set_window_capture_exclusion
+from overlay.configuration.theme import THEME
 
 logger = logging.getLogger(__name__)
 

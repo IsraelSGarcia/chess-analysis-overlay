@@ -6,8 +6,8 @@ Unit tests for blunder detection across various tactical positions.
 
 import unittest
 import chess
-from chess_tactical.blunders import find_all_blunders, BlunderMove
-from chess_tactical.report import generate_tactical_report
+from projects.chess_tactical_analyzer.blunders import find_all_blunders, BlunderMove
+from projects.chess_tactical_analyzer.report import generate_tactical_report
 
 
 class TestBlunderDetection(unittest.TestCase):

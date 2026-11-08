@@ -45,8 +45,8 @@ def _minimize_console() -> None:
         pass
 
 
-from chess_visualizer.validator import is_valid_recognized_board
-from chess_visualizer.transitions import (
+from core.chess_rules.validator import is_valid_recognized_board
+from core.chess_rules.transitions import (
     determine_turn_from_move,
     sanitize_board_transition,
     generate_candidate_moves,
@@ -99,16 +99,16 @@ def main() -> None:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
-    from chess_visualizer.settings import Settings
-    from chess_visualizer.overlay import OverlayConfig
-    from chess_visualizer._overlay_widget import OverlayWidget
-    from chess_visualizer._control_bar import ControlBar
-    from chess_visualizer._hud_panel import HUDPanel
-    from chess_visualizer._tray import AppTrayIcon, create_app_icon
-    from chess_visualizer.chess_logic import get_all_captures_dict
-    from chess_visualizer.capture import ScreenCapture
-    from chess_visualizer.recognition import Recognizer, detect_chessboard_fullscreen, detect_chessboard_in_crop
-    from chess_tactical import generate_tactical_report
+    from overlay.configuration.settings import Settings
+    from overlay.configuration.overlay_config import OverlayConfig
+    from overlay.rendering.overlay_widget import OverlayWidget
+    from overlay.interface.control_bar import ControlBar
+    from overlay.interface.hud_panel import HUDPanel
+    from overlay.interface.tray import AppTrayIcon, create_app_icon
+    from projects.chess_capture_visualizer.captures import get_all_captures_dict
+    from core.board_recognition.capture import ScreenCapture
+    from core.board_recognition.recognition import Recognizer, detect_chessboard_fullscreen, detect_chessboard_in_crop
+    from projects.chess_tactical_analyzer.report import generate_tactical_report
 
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("chess_analysis_overlay.app.v1")
@@ -292,7 +292,7 @@ def main() -> None:
 
     def run_recalibrate():
         """Manual calibration fallback: drag a box over the board."""
-        from chess_visualizer._calibration import CalibrationWidget
+        from core.board_recognition.calibration import CalibrationWidget
         overlay.hide()
         if control_bar:
             control_bar.hide()

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from chess_visualizer._control_bar import ControlBar
+from overlay.interface.control_bar import ControlBar
 
 app = QApplication.instance() or QApplication(sys.argv)
 

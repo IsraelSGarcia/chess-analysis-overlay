@@ -1,6 +1,40 @@
-# Chess Capture Visualizer
+# Chess Analysis Overlay
 
-A lightweight Windows desktop overlay that reads any chessboard visible on your screen (Chess.com, Lichess, desktop engines, etc.) and draws **live legal capture, attack, and defense arrows and square highlights** directly over the board in real time.
+An advanced Windows desktop chess analysis overlay that uses computer vision to recognize chess positions on your screen (Chess.com, Lichess, desktop GUIs) and provides real-time tactical and capture intelligence through high-precision visual annotations.
+
+**Non-Engine Philosophy**: Unlike conventional chess engines (Stockfish, LCZero, Komodo) that calculate deep search trees to recommend single "best" moves, this project is built upon **0-ply geometric awareness, concrete tactical pattern recognition, and simultaneous two-sided analysis**.
+
+---
+
+## Architecture: The Umbrella Monorepo
+
+The codebase is organized as a modular monorepo structured strictly by domain responsibility:
+
+```text
+chess-analysis-overlay/
+│
+├── README.md
+├── requirements.txt
+├── install.bat / launch.bat / launch_calibrate.bat
+├── main.py                          # Root umbrella entry point
+│
+├── core/                            # Shared domain infrastructure
+│   ├── board_recognition/           # Screen capture, grid snapping, piece classification
+│   ├── chess_rules/                 # Move legality, board validation, transition continuity
+│   ├── position_representation/     # Board models, geometric square-to-pixel coordinate transforms
+│   └── shared_analysis/             # Static Exchange Evaluation (SEE), attack/defense maps, piece values
+│
+├── projects/                        # Specialized analytical subprojects
+│   ├── chess-capture-visualizer/    # Legal capture & defense moves for both sides simultaneously
+│   └── chess-tactical-analyzer/     # Tactical motifs, hanging pieces, trapped pieces, X-rays, blunders
+│
+├── overlay/                         # Unified presentation layer
+│   ├── rendering/                   # Hardware-accelerated transparent canvas (arrows, brackets, rays)
+│   ├── interface/                   # Draggable control bar, floating analysis HUD panel, system tray
+│   └── configuration/               # Centralized VisualTheme design system, persistent settings
+│
+└── tests/                           # Complete test suite covering all modules (113 unit tests)
+```
 
 ---
 
@@ -35,21 +69,24 @@ You do **not** need programming experience to use this app. Follow these 3 simpl
 
 ---
 
-## Two Distinct Visualization Modes: Captures vs Tactics
+## Specialized Analytical Modes
 
-The application provides clean separation between **Capture Visualization** and **Tactical Intelligence**. Switch between them at any time with the **`Tactics` / `Captures`** button on the toolbar or via **`Ctrl + Alt + M`**:
+Switch between analytical modes at any time with the **`Tactics` / `Captures`** button on the toolbar or via **`Ctrl + Alt + M`**:
 
-### 1. Tactics Mode (`Mode: Tactics`)
-Specialized analytical mode focusing on concrete tactical threats, combinations, and advantages:
-- **Winning Trade Arrows**: Vivid Emerald Green arrows (`#00E676`) on all favorable captures (Static Exchange Evaluation $> 0$) and free hanging pieces.
-- **Multi-Target Fork Arrows**: Vivid purple arrows (`#D500F9`) radiating from attacking pieces directly to all forked victims.
-- **Pin & Skewer Rays**: Directed lines highlighting absolute pins (to the King) and relative pins (to the Queen/Rook).
-- **Blunder Warnings**: Crimson Red arrows (`#FF1744`) indicating all self-destructive moves and immediate mate allowances.
+### 1. Tactical Analyzer Mode (`Mode: Tactics`)
+Specialized analytical mode focusing on concrete tactical motifs, vulnerabilities, and exchanges:
+- **Winning Trade Arrows**: Emerald Green arrows (`#00E676`) on favorable captures (Static Exchange Evaluation $> 0$) and free hanging pieces.
+- **Multi-Target Fork Arrows**: Vivid purple arrows (`#D500F9`) radiating from attacking pieces directly to forked victims.
+- **Pins & Skewers**: Directed lines highlighting absolute pins (to the King) and relative pins (to the Queen/Rook).
+- **Discovered Attacks & Checks**: Highlighting the masking piece and uncovering slider rays.
+- **Trapped Pieces**: Ice Cyan corner bracket outlines (`#00E5FF`) on pieces with zero safe destination squares.
+- **Slider X-Ray Rays**: Ice Cyan dashed arrows (`#00E5FF`) piercing through 1 obstacle directly threatening enemy heavy pieces.
+- **Removing the Defender & Mating Threats**: Visualizing attacks on sole defenders and immediate checkmate opportunities.
+- **Subtle Blunder Warnings**: Semi-transparent Crimson Red arrows (`#FF1744`, opacity 0.43, width mult 0.55) indicating candidate moves that immediately lose material or allow checkmate.
 - **Hanging Piece Alerts**: Radiant Orange dashed boxes and threat arrows (`#FF6D00`) on undefended or tactically vulnerable pieces.
-- **Check Alerts**: Urgent Red border and threat arrows on King in check.
-- **Tactical Analysis HUD**: Draggable companion card showing live material balance, hanging piece summaries, and active motifs.
+- **Analysis HUD Panel**: Floating, collapsible companion card showing material balance, hanging piece counts, and active motif badges with click-to-highlight filtering.
 
-### 2. Captures Mode (`Mode: Captures`)
+### 2. Capture Visualizer Mode (`Mode: Captures`)
 The classic capture visualizer displaying the complete legal influence and square control network:
 - **Player Legal Captures**: Vibrant Blue arrows for all your available captures.
 - **Enemy Legal Captures**: Vibrant Red arrows for all opponent captures.
@@ -66,11 +103,12 @@ A sleek, monochromatic floating toolbar sits above your board, paired with a Win
 |:---|:---:|:---|
 | `Overlay` | **Ctrl + Alt + X** | **Master Toggle**: Show or hide the entire overlay instantly |
 | `Tactics` / `Captures` | **Ctrl + Alt + M** | **Mode Switch**: Toggle between Tactical Analysis and Legal Captures |
+| `Turn` (White/Black/Auto) | **Click Turn Badge** | Explicitly toggle or cycle active player turn |
 | `Player` | **Ctrl + Alt + A** | Toggle your influence arrows & highlights on/off |
 | `Enemy` | **Ctrl + Alt + S** | Toggle opponent influence arrows & highlights on/off |
 | `Defense` | **Ctrl + Alt + D** | Toggle arrows pointing to friendly defended pieces |
-| `Flip` | **Ctrl + Alt + F** | Flip player color / perspective (swaps Blue ↔ Red assignment) |
-| `Highlights` | **Ctrl + Alt + H** | Toggle square background tints on/off |
+| `Flip` | **Ctrl + Alt + F** | Flip player color / perspective (Captures mode) |
+| `Highlights` | **Ctrl + Alt + H** | Toggle square background tints on/off (Captures mode) |
 | `HUD` | **Ctrl + Alt + T** | Toggle the floating **Tactical Analysis HUD** panel |
 | `Auto` | **Ctrl + Alt + B** | Toggle **Full-Screen Auto-Detect** mode |
 | `Calibrate` | **Ctrl + Alt + C** | Launch manual calibration fallback |
@@ -78,75 +116,22 @@ A sleek, monochromatic floating toolbar sits above your board, paired with a Win
 
 *All shortcuts use `Ctrl + Alt + [Key]`, meaning they will never interfere with normal typing, chat boxes, browser shortcuts, or games.*
 
-### Windows Taskbar & System Tray Integration
-- **Immediate Launch Feedback**: When launched, the sleek control bar appears immediately with live status (`● Searching...` while scanning, `● Locked` when tracking a board, `● Manual` when locked to a custom region).
-- **Windows Taskbar**: The toolbar appears on your Windows Taskbar with a custom dark-mode chess knight icon.
-- **System Tray Icon**: Right-click the chess knight icon in your Windows notification tray (near the clock) to toggle the Overlay, toggle the Tactical HUD, switch Auto-Track, recalibrate, or exit at any time.
-
-### Moving the Toolbar & HUD
-- Click and drag anywhere on the toolbar or HUD (or on the `::` grip on the left) to move them anywhere on your screen.
-- Both positions are saved automatically across restarts.
-
 ---
 
-## Manual / Command-Line Setup (For Developers)
-
-If you prefer using the command line:
-
-```bash
-# 1. Clone repository
-git clone https://github.com/IsraelSGarcia/chess-capture-visualizer.git
-cd chess-capture-visualizer
-
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. Launch calibration mode
-python -m chess_visualizer --calibrate
-
-# 4. Standard launch
-python -m chess_visualizer
-```
-
----
-
-## Troubleshooting & FAQ
-
-#### Nothing happens when I double-click `launch.bat`
-- Make sure you ran **`install.bat`** first.
-- Ensure Python was added to your PATH. If unsure, open Command Prompt, type `python --version`, and press Enter. If it says command not found, reinstall Python and check `Add python.exe to PATH`.
-
-#### Does the overlay capture itself or lag the screen?
-- No. Both the overlay and calibration windows use Windows `SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)`. Windows excludes the overlay from screen captures, preventing feedback loops and screen lag.
-
-#### The board was rotated / I am playing as Black
-- The visualizer automatically detects whether White or Black is at the bottom directly from the piece layout. If you want your pieces to be Blue while playing as Black, click **`Flip`** (or press **`Ctrl + Alt + F`**).
-
----
-
-## Architecture & Screen Capture Isolation Invariant
+## Screen Capture Isolation Invariant
 
 ### The Anti-Self-Detection Standard
-To prevent visual feedback loops (where the screen capture grabs the visualizer's own arrows, brackets, or highlights and feeds them back into the ML piece classifier or turn detector), the application enforces a strict **Three-Layer Capture Isolation Architecture**:
-
-1. **Layer 1 — Hardware/OS DWM Window Exclusion (`WDA_EXCLUDEFROMCAPTURE`)**:
-   Every overlay window (`OverlayWidget`, `HUDPanel`, `ControlBar`, `CalibrationWidget`) enforces `SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE = 0x11)` upon creation and in its `showEvent()`. Windows Desktop Window Manager (DWM) excludes these windows from the capture pipeline at the GPU compositor level with zero CPU overhead and zero visual flickering.
-2. **Layer 2 — Defensive Fallback (`_grab_clean`)**:
-   If running in an environment where OS-level DWM exclusion is unsupported or returns an error, the orchestration loop momentarily hides the overlay during frame acquisition (`overlay.hide()` $\to$ `grab()` $\to$ `overlay.show()`), mathematically guaranteeing clean input frames.
-3. **Layer 3 — Visual Sanitization (`strip_overlay_artifacts`)**:
-   An OpenCV image preprocessor scans crops for any high-saturation overlay colors ($\ge 215$) and inpaints them before piece classification or move highlight analysis.
-
-**Rule for Future Code:**
-> Any new window or widget rendered above the desktop must invoke `set_window_capture_exclusion(self)` in `_setup_ui()` and `showEvent()`. Under no circumstances may an overlay window be created without active capture exclusion.
+To prevent visual feedback loops (where the screen capture grabs the visualizer's own arrows, brackets, or highlights and feeds them back into piece classification or turn detection), the application enforces a strict **Hardware/OS DWM Window Exclusion**:
+- Every overlay window (`OverlayWidget`, `HUDPanel`, `ControlBar`, `CalibrationWidget`) enforces `SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE = 0x11)` upon creation and in its `showEvent()`. Windows Desktop Window Manager (DWM) excludes these windows from the capture pipeline at the GPU compositor level with zero CPU overhead and zero visual flickering.
 
 ---
 
 ## Running Automated Tests
 
-To verify that the capture logic, tactical intelligence engine, recognition pipeline, and grid alignment are working on your system:
+To verify that the monorepo packages, core rules, tactical engines, and coordinate geometry are functioning correctly:
 
 ```bash
 python -m unittest discover tests -v
 ```
 
-*(All 72 unit and integration tests passing in under 3 seconds)*
+*(All 113 unit and integration tests passing in ~2 seconds)*

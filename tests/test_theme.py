@@ -6,7 +6,7 @@ Unit tests for the centralized design system and color palette.
 
 import unittest
 from PySide6.QtGui import QColor
-from chess_visualizer.theme import THEME, VisualTheme, Theme
+from overlay.configuration.theme import THEME, VisualTheme, Theme
 
 
 class TestTheme(unittest.TestCase):

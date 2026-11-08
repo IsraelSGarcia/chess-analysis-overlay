@@ -1,6 +1,6 @@
 """
-overlay.py
-==========
+overlay.configuration.overlay_config
+====================================
 Configuration dataclass for the overlay renderer.
 """
 

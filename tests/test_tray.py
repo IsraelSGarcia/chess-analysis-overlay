@@ -12,7 +12,7 @@ from PySide6.QtGui import QIcon
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from chess_visualizer._tray import AppTrayIcon, create_app_icon
+from overlay.interface.tray import AppTrayIcon, create_app_icon
 
 app = QApplication.instance() or QApplication(sys.argv)
 

@@ -10,9 +10,9 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-start "" pythonw -m chess_visualizer %*
+start "" pythonw main.py %*
 if %ERRORLEVEL% NEQ 0 (
-    python -m chess_visualizer %*
+    python main.py %*
     pause
 )
 exit

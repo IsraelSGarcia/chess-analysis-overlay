@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 import chess
 
-from chess_tactical.values import get_piece_value, PIECE_VALUES
+from core.shared_analysis.values import get_piece_value, PIECE_VALUES
 
 
 # Rays for each slider type:

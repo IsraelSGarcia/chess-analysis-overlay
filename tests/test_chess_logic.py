@@ -10,7 +10,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import chess
-from chess_visualizer.chess_logic import (
+from projects.chess_capture_visualizer.captures import (
     get_all_captures,
     get_all_captures_dict,
     get_legal_captures,

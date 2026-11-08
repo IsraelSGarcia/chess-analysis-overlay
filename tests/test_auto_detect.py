@@ -11,7 +11,7 @@ from PIL import Image
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from chess_visualizer.recognition import detect_chessboard_fullscreen
+from core.board_recognition.recognition import detect_chessboard_fullscreen
 
 
 class TestAutoDetection(unittest.TestCase):

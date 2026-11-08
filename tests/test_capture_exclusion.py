@@ -3,11 +3,11 @@ import unittest
 from PySide6.QtWidgets import QApplication, QWidget
 from PySide6.QtCore import Qt
 
-from chess_visualizer.capture import set_window_capture_exclusion, WDA_EXCLUDEFROMCAPTURE
-from chess_visualizer.overlay import OverlayConfig
-from chess_visualizer._overlay_widget import OverlayWidget
-from chess_visualizer._control_bar import ControlBar
-from chess_visualizer._hud_panel import HUDPanel
+from core.board_recognition.capture import set_window_capture_exclusion, WDA_EXCLUDEFROMCAPTURE
+from overlay.configuration.overlay_config import OverlayConfig
+from overlay.rendering.overlay_widget import OverlayWidget
+from overlay.interface.control_bar import ControlBar
+from overlay.interface.hud_panel import HUDPanel
 
 
 class TestCaptureExclusion(unittest.TestCase):

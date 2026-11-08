@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import List, Tuple
 import chess
 
-from chess_tactical.values import get_piece_value
+from core.shared_analysis.values import get_piece_value
 
 
 @dataclass(frozen=True)

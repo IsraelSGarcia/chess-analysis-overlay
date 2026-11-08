@@ -13,7 +13,7 @@ Unit tests for the standalone chess_tactical analytical engine:
 import unittest
 import chess
 
-from chess_tactical import (
+from projects.chess_tactical_analyzer import (
     ExchangeCategory,
     evaluate_exchange,
     evaluate_all_captures,

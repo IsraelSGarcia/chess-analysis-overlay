@@ -10,9 +10,9 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-start "" pythonw -m chess_visualizer --calibrate %*
+start "" pythonw main.py --calibrate %*
 if %ERRORLEVEL% NEQ 0 (
-    python -m chess_visualizer --calibrate %*
+    python main.py --calibrate %*
     pause
 )
 exit

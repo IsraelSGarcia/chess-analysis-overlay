@@ -20,9 +20,9 @@ from PIL import Image
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from chess_visualizer.recognition import is_move_dot, clean_square_image
-from chess_visualizer.main import sanitize_board_transition, determine_turn_from_move
-from chess_tactical import generate_tactical_report
+from core.board_recognition.recognition import is_move_dot, clean_square_image
+from core.chess_rules.transitions import sanitize_board_transition, determine_turn_from_move
+from projects.chess_tactical_analyzer import generate_tactical_report
 
 
 class TestMoveDotAndContinuity(unittest.TestCase):
@@ -178,7 +178,7 @@ class TestMoveDotAndContinuity(unittest.TestCase):
 
     def test_lichess_fullscreen_detection_with_chopped_rank8(self):
         """Verify detect_chessboard_fullscreen recovers exact coordinates on Lichess despite piece density."""
-        from chess_visualizer.recognition import detect_chessboard_fullscreen
+        from core.board_recognition.recognition import detect_chessboard_fullscreen
         import chess.svg
         from PySide6.QtCore import QByteArray
         from PySide6.QtGui import QImage, QPainter
@@ -208,7 +208,7 @@ class TestMoveDotAndContinuity(unittest.TestCase):
 
     def test_lichess_fullscreen_detection_with_flush_eval_bar(self):
         """Verify detect_chessboard_fullscreen excludes flush Lichess evaluation gauge on left."""
-        from chess_visualizer.recognition import detect_chessboard_fullscreen
+        from core.board_recognition.recognition import detect_chessboard_fullscreen
         import chess.svg
         from PySide6.QtCore import QByteArray
         from PySide6.QtGui import QImage, QPainter

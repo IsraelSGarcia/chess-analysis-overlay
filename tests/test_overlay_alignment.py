@@ -13,8 +13,8 @@ import chess
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from chess_visualizer.overlay import OverlayConfig
-from chess_visualizer._overlay_widget import OverlayWidget
+from overlay.configuration.overlay_config import OverlayConfig
+from overlay.rendering.overlay_widget import OverlayWidget
 
 app = QApplication.instance() or QApplication(sys.argv)
 

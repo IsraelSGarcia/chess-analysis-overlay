@@ -20,11 +20,11 @@ from PySide6.QtGui import QColor, QPainter, QImage
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from chess_visualizer.recognition import detect_active_turn
-from chess_visualizer._overlay_widget import OverlayWidget
-from chess_visualizer.overlay import OverlayConfig
-from chess_visualizer._hud_panel import HUDPanel
-from chess_tactical import generate_tactical_report
+from core.board_recognition.recognition import detect_active_turn
+from overlay.rendering.overlay_widget import OverlayWidget
+from overlay.configuration.overlay_config import OverlayConfig
+from overlay.interface.hud_panel import HUDPanel
+from projects.chess_tactical_analyzer import generate_tactical_report
 
 app = QApplication.instance() or QApplication(sys.argv)
 
@@ -159,7 +159,7 @@ class TestTurnAndPaletteAlignment(unittest.TestCase):
 
     def test_piece_selection_preserves_turn(self):
         """When a user clicks on a piece without moving it, piece positions are identical and turn is preserved."""
-        from chess_visualizer.main import determine_turn_from_move
+        from core.chess_rules.transitions import determine_turn_from_move
         board = chess.Board("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
         # Same piece map (user clicked a piece, highlighting it on screen)
         result = determine_turn_from_move(board, board.copy())
@@ -167,7 +167,7 @@ class TestTurnAndPaletteAlignment(unittest.TestCase):
 
     def test_determine_turn_from_moves(self):
         """Verify turn derivation from actual piece moves (White moves -> Black turn, Black moves -> White turn)."""
-        from chess_visualizer.main import determine_turn_from_move
+        from core.chess_rules.transitions import determine_turn_from_move
         b0 = chess.Board()
         b1 = b0.copy()
         b1.push_san("e4")  # White plays 1. e4
@@ -179,7 +179,7 @@ class TestTurnAndPaletteAlignment(unittest.TestCase):
 
     def test_determine_turn_castling(self):
         """Verify castling move correctly detects that White moved."""
-        from chess_visualizer.main import determine_turn_from_move
+        from core.chess_rules.transitions import determine_turn_from_move
         b_pre = chess.Board("r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 0 5")
         b_castle = b_pre.copy()
         b_castle.push_san("O-O")

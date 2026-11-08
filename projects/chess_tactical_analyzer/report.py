@@ -17,15 +17,15 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 import chess
 
-from chess_tactical.values import ExchangeCategory, PIECE_VALUES, get_piece_value
-from chess_tactical.attack_defense import AttackDefenseMap
-from chess_tactical.see import ExchangeResult, evaluate_all_captures
-from chess_tactical.hanging import HangingPiece, find_hanging_pieces
-from chess_tactical.motifs import TacticalMotif, scan_all_motifs, MotifType
-from chess_tactical.forcing_search import TacticalSequence, calculate_tactical_sequences
-from chess_tactical.blunders import BlunderMove, find_all_blunders
-from chess_tactical.trapped import TrappedPiece, find_trapped_pieces
-from chess_tactical.xray import XRayRay, find_xray_rays
+from core.shared_analysis.values import ExchangeCategory, PIECE_VALUES, get_piece_value
+from core.shared_analysis.attack_defense import AttackDefenseMap
+from core.shared_analysis.see import ExchangeResult, evaluate_all_captures
+from projects.chess_tactical_analyzer.hanging import HangingPiece, find_hanging_pieces
+from projects.chess_tactical_analyzer.motifs import TacticalMotif, scan_all_motifs, MotifType
+from projects.chess_tactical_analyzer.forcing_search import TacticalSequence, calculate_tactical_sequences
+from projects.chess_tactical_analyzer.blunders import BlunderMove, find_all_blunders
+from projects.chess_tactical_analyzer.trapped import TrappedPiece, find_trapped_pieces
+from projects.chess_tactical_analyzer.xray import XRayRay, find_xray_rays
 
 
 @dataclass

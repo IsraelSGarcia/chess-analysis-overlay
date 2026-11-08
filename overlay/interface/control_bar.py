@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QLabel, QFrame,
 )
 
-from chess_visualizer.capture import set_window_capture_exclusion
+from core.board_recognition.capture import set_window_capture_exclusion
 
 
 class ControlBar(QWidget):
