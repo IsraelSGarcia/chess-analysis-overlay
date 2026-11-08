@@ -1,9 +1,9 @@
 @echo off
 setlocal
-title Chess Capture Visualizer - Setup
+title Chess Analysis Overlay - Setup
 
 echo ========================================================
-echo    Chess Capture Visualizer - One-Click Setup
+echo    Chess Analysis Overlay - One-Click Setup
 echo ========================================================
 echo.
 
@@ -12,7 +12,7 @@ where python >nul 2>nul
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Python was not found on your system!
     echo.
-    echo Please download and install Python (version 3.10 or newer) from:
+    echo Please download and install Python version 3.10 or newer from:
     echo   https://www.python.org/downloads/
     echo.
     echo IMPORTANT: Make sure to check the box:
@@ -47,6 +47,6 @@ echo.
 echo Next steps:
 echo   1. Open Chess.com or Lichess in your browser.
 echo   2. Double-click "launch.bat" to start.
-echo   3. The visualizer auto-detects your chessboard instantly!
+echo   3. The overlay auto-detects your chessboard instantly!
 echo.
 pause

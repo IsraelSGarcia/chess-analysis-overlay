@@ -36,11 +36,12 @@ logger = logging.getLogger(__name__)
 
 
 def _minimize_console() -> None:
-    """Minimize console window if launched via cmd/terminal."""
+    """Minimize console window only if launched via launch.bat."""
     try:
-        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
-        if hwnd:
-            ctypes.windll.user32.ShowWindow(hwnd, 6)  # SW_MINIMIZE
+        if os.environ.get("CHESS_LAUNCHED_FROM_BAT") == "1":
+            hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+            if hwnd:
+                ctypes.windll.user32.ShowWindow(hwnd, 6)  # SW_MINIMIZE
     except Exception:
         pass
 
@@ -418,6 +419,10 @@ def main() -> None:
 
     # Always show ControlBar immediately so the user has visual confirmation & taskbar access
     control_bar.show()
+    control_bar.raise_()
+    control_bar.activateWindow()
+    if tray_icon:
+        tray_icon.notify("Chess Analysis Overlay", "Active and searching for chessboard on screen.")
 
     # In manual mode with saved region, show overlay and hud right away
     if settings.manual_locked and settings.board_region:

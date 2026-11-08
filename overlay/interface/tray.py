@@ -128,6 +128,13 @@ class AppTrayIcon(QSystemTrayIcon):
         self.act_hud.setChecked(hud_visible)
         self.act_auto.setChecked(auto_track)
 
+    def notify(self, title: str, message: str, timeout_ms: int = 2500) -> None:
+        """Display a subtle system notification balloon near the clock."""
+        try:
+            self.showMessage(title, message, QSystemTrayIcon.MessageIcon.Information, timeout_ms)
+        except Exception:
+            pass
+
     def set_status_text(self, status: str) -> None:
         self.setToolTip(f"Chess Analysis Overlay: {status}")
 
