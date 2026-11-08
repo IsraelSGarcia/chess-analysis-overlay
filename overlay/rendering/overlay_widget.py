@@ -214,25 +214,6 @@ class OverlayWidget(QWidget):
         enemy_color = chess.BLACK if turn_color == chess.WHITE else chess.WHITE
 
         # ---------------------------------------------------------------------
-        # 0. Active Check Alerts (Crimson Red: Attacker -> King Arrows & Brackets)
-        # ---------------------------------------------------------------------
-        try:
-            if rep.board.is_check():
-                king_sq = rep.board.king(turn_color)
-                if king_sq is not None:
-                    k_rect = self._get_square_rect(king_sq)
-                    p.setPen(QPen(THEME.CHECK, 2.0, Qt.PenStyle.SolidLine))
-                    p.drawRect(k_rect)
-                    self._draw_corner_brackets(p, k_rect, THEME.CHECK, bracket_len=THEME.BRACKET_LEN, pen_width=THEME.BRACKET_PEN_WIDTH)
-
-                    for chk_sq in rep.board.checkers():
-                        cx, cy = self._get_square_centre(chk_sq)
-                        kx, ky = self._get_square_centre(king_sq)
-                        self._draw_single_arrow(p, cx, cy, kx, ky, THEME.CHECK, False, width_mult=THEME.WIDTH_FORK)
-        except Exception as exc:
-            logger.debug("Check indicators paint error: %s", exc)
-
-        # ---------------------------------------------------------------------
         # 1. Clean Tactical Accents (Hanging pieces, Motifs, Trapped pieces)
         # ---------------------------------------------------------------------
         try:

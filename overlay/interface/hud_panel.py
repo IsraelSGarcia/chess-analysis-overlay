@@ -234,22 +234,6 @@ class HUDPanel(QWidget):
             loser = "White" if turn_color == chess.WHITE else "Black"
             self.lbl_alert.setText(f"🔴 CHECKMATE — {winner} wins! ({loser} mated)")
             self.lbl_alert.setVisible(True)
-        elif report.board.is_check():
-            checkers = list(report.board.checkers())
-            check_sources = []
-            for chk_sq in checkers:
-                p = report.board.piece_at(chk_sq)
-                sym = p.symbol() if p else "?"
-                check_sources.append(f"{sym}@{chess.square_name(chk_sq)}")
-            src_str = f" from {', '.join(check_sources)}" if check_sources else ""
-            msg = f"🔴 CHECK! {turn_name} King under attack{src_str}"
-            if blunder_summary:
-                msg += f" | {blunder_summary.replace('🔴 ', '')}"
-            self.lbl_alert.setText(msg)
-            self.lbl_alert.setVisible(True)
-        elif report.board.is_stalemate():
-            self.lbl_alert.setText("⚖️ STALEMATE — Draw by stalemate (no legal moves)")
-            self.lbl_alert.setVisible(True)
         elif blunder_summary:
             self.lbl_alert.setText(blunder_summary)
             self.lbl_alert.setVisible(True)
