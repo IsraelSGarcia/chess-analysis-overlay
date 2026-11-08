@@ -46,8 +46,7 @@ echo ========================================================
 echo.
 echo Next steps:
 echo   1. Open Chess.com or Lichess in your browser.
-echo   2. Double-click "launch_calibrate.bat" to start.
-echo   3. Drag a rough box over your board - it auto-snaps!
-echo   4. Press Enter to confirm.
+echo   2. Double-click "launch.bat" to start.
+echo   3. The visualizer auto-detects your chessboard instantly!
 echo.
 pause

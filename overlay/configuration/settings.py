@@ -14,7 +14,7 @@ from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-SETTINGS_PATH = Path(__file__).parent.parent / "settings.json"
+SETTINGS_PATH = Path(__file__).parent / "settings.json"
 
 
 @dataclass

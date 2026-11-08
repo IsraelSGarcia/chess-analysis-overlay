@@ -15,7 +15,7 @@ chess-analysis-overlay/
 │
 ├── README.md
 ├── requirements.txt
-├── install.bat / launch.bat / launch_calibrate.bat
+├── install.bat / launch.bat
 ├── main.py                          # Root umbrella entry point
 │
 ├── core/                            # Shared domain infrastructure

@@ -23,7 +23,7 @@ from PySide6.QtCore import QObject, Signal, Slot, QTimer
 from PySide6.QtWidgets import QApplication
 
 # Configure file logging alongside console
-LOG_FILE = Path(__file__).parent.parent / "visualizer.log"
+LOG_FILE = Path(__file__).parent / "visualizer.log"
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
