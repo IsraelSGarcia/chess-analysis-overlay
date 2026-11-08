@@ -565,10 +565,10 @@ def main() -> None:
                 w_new_squares = set(new_w.keys()) - set(prev_w.keys())
                 b_new_squares = set(new_b.keys()) - set(prev_b.keys())
 
-                # A friendly piece vanished from its square with no arrival destination
+                # Exactly one friendly piece vanished from its square with no arrival destination
                 # and no opponent move. This is a transient mouse drag frame on Lichess/Chess.com.
-                if (w_vacated and not w_new_squares and not b_new_squares and not b_vacated) or \
-                   (b_vacated and not b_new_squares and not w_new_squares and not w_vacated):
+                if (len(w_vacated) == 1 and not w_new_squares and not b_new_squares and not b_vacated) or \
+                   (len(b_vacated) == 1 and not b_new_squares and not w_new_squares and not w_vacated):
                     logger.debug("Transient piece drag frame ignored; preserving established board state.")
                     return
 

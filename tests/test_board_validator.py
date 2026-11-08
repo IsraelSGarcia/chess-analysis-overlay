@@ -64,6 +64,11 @@ class TestBoardValidator(unittest.TestCase):
         board = chess.Board(None)
         self.assertFalse(is_valid_recognized_board(board))
 
+    def test_reject_both_kings_in_check(self):
+        # White King on h1 attacked by Black Rook on a1; Black King on h8 attacked by White Rook on a8
+        board = chess.Board("R6k/8/8/8/8/8/8/r6K w - - 0 1")
+        self.assertFalse(is_valid_recognized_board(board))
+
 
 if __name__ == "__main__":
     unittest.main()

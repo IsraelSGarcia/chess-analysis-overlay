@@ -214,6 +214,25 @@ class OverlayWidget(QWidget):
         enemy_color = chess.BLACK if turn_color == chess.WHITE else chess.WHITE
 
         # ---------------------------------------------------------------------
+        # 0. Active Check Alerts (Crimson Red: Attacker -> King Arrows & Brackets)
+        # ---------------------------------------------------------------------
+        try:
+            if rep.board.is_check():
+                king_sq = rep.board.king(turn_color)
+                if king_sq is not None:
+                    k_rect = self._get_square_rect(king_sq)
+                    p.setPen(QPen(THEME.CHECK, 2.0, Qt.PenStyle.SolidLine))
+                    p.drawRect(k_rect)
+                    self._draw_corner_brackets(p, k_rect, THEME.CHECK, bracket_len=THEME.BRACKET_LEN, pen_width=THEME.BRACKET_PEN_WIDTH)
+
+                    for chk_sq in rep.board.checkers():
+                        cx, cy = self._get_square_centre(chk_sq)
+                        kx, ky = self._get_square_centre(king_sq)
+                        self._draw_single_arrow(p, cx, cy, kx, ky, THEME.CHECK, False, width_mult=THEME.WIDTH_FORK)
+        except Exception as exc:
+            logger.debug("Check indicators paint error: %s", exc)
+
+        # ---------------------------------------------------------------------
         # 1. Clean Tactical Accents (Hanging pieces, Motifs, Trapped pieces)
         # ---------------------------------------------------------------------
         try:
@@ -338,6 +357,24 @@ class OverlayWidget(QWidget):
                     for tgt_sq in m.target_squares:
                         tx, ty = self._get_square_centre(tgt_sq)
                         self._draw_single_arrow(p, fx, fy, tx, ty, THEME.BACK_RANK, False, width_mult=THEME.WIDTH_MOTIF)
+
+                elif m.motif_type == MotifType.MATING_THREAT:
+                    # Immediate checkmate threat move
+                    tx, ty = self._get_square_centre(m.target_squares[0])
+                    self._draw_single_arrow(p, fx, fy, tx, ty, THEME.MOTIF, False, width_mult=THEME.WIDTH_FORK)
+                    tgt_rect = self._get_square_rect(m.target_squares[0])
+                    self._draw_corner_brackets(p, tgt_rect, THEME.MOTIF, bracket_len=12.0, pen_width=2.5)
+
+                elif m.motif_type in (MotifType.REMOVING_DEFENDER, MotifType.DEFLECTION):
+                    if len(m.target_squares) >= 2:
+                        def_x, def_y = self._get_square_centre(m.target_squares[0])
+                        prize_x, prize_y = self._get_square_centre(m.target_squares[1])
+                        # Solid attack arrow to defender
+                        self._draw_single_arrow(p, fx, fy, def_x, def_y, THEME.MOTIF, False, width_mult=THEME.WIDTH_MOTIF)
+                        # Dashed line from defender to prize
+                        self._draw_single_arrow(p, def_x, def_y, prize_x, prize_y, THEME.DEFENSE, True, width_mult=THEME.WIDTH_XRAY, is_dashed=True)
+                        # Corner brackets on sole defender square
+                        self._draw_corner_brackets(p, self._get_square_rect(m.target_squares[0]), THEME.MOTIF, bracket_len=9.0, pen_width=1.8)
         except Exception as exc:
             logger.debug("Motifs paint error: %s", exc)
 

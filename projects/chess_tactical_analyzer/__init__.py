@@ -33,6 +33,7 @@ from .motifs import (
     find_back_rank_weaknesses,
     find_mating_threats,
     find_removing_the_defender,
+    find_deflection_tactics,
     scan_all_motifs,
 )
 from .hanging import HangingPiece, find_hanging_pieces
@@ -62,6 +63,7 @@ __all__ = [
     "find_back_rank_weaknesses",
     "find_mating_threats",
     "find_removing_the_defender",
+    "find_deflection_tactics",
     "scan_all_motifs",
     "HangingPiece",
     "find_hanging_pieces",

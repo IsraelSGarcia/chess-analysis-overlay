@@ -44,6 +44,10 @@ class VisualTheme:
     XRAY: QColor = QColor(0, 229, 255, 160)
     XRAY_HEX: str = "#00e5ff"
 
+    # Checks & Checkmate Alert: High-Visibility Crimson Red (Solid)
+    CHECK: QColor = QColor(255, 23, 68, 245)
+    CHECK_HEX: str = "#ff1744"
+
     # Blunder Moves: Crimson Red (43% Opacity, Thin, Unobtrusive)
     BLUNDER: QColor = QColor(255, 23, 68, 110)
     BLUNDER_HEX: str = "#ff1744"

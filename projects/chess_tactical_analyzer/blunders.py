@@ -57,7 +57,7 @@ def find_all_blunders(
     turn_color = color if color is not None else board.turn
     opp_color = not turn_color
 
-    test_board = board.copy()
+    test_board = board.copy(stack=False)
     test_board.turn = turn_color
 
     candidate_moves = list(test_board.legal_moves)

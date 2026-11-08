@@ -21,6 +21,7 @@ def is_valid_recognized_board(board: chess.Board) -> bool:
     - At most 16 pieces per side.
     - At most 8 pawns per side.
     - No pawns on rank 1 or rank 8 (physically impossible in chess rules).
+    - Both kings cannot be in check simultaneously.
 
     Guards against misaligned crops, desktop background noise, and prevents
     false-positive flickering.
@@ -50,5 +51,14 @@ def is_valid_recognized_board(board: chess.Board) -> bool:
             rank = chess.square_rank(sq)
             if rank == 0 or rank == 7:
                 return False
+
+    # In legal chess, both Kings can never be attacked/checked at the same time
+    white_king_sq = board.king(chess.WHITE)
+    black_king_sq = board.king(chess.BLACK)
+    if white_king_sq is not None and black_king_sq is not None:
+        white_in_check = board.is_attacked_by(chess.BLACK, white_king_sq)
+        black_in_check = board.is_attacked_by(chess.WHITE, black_king_sq)
+        if white_in_check and black_in_check:
+            return False
 
     return True

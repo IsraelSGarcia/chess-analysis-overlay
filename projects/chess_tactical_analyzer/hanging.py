@@ -94,7 +94,7 @@ def find_hanging_pieces(
 
     for c in colors:
         enemy_color = not c
-        test_board = board.copy()
+        test_board = board.copy(stack=False)
         test_board.turn = enemy_color
 
         for sq in chess.SQUARES:

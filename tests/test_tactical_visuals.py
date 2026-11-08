@@ -90,6 +90,28 @@ class TestTacticalVisuals(unittest.TestCase):
         self.widget._paint_tactics_mode(p)
         p.end()
 
+    def test_tactics_mode_paint_with_open_check(self):
+        # White King on e1 checked by Black Queen on e7
+        board = chess.Board("rnb1kbnr/ppppqppp/8/8/3P4/8/PPPP1PPP/RNBQKBNR w KQkq - 1 3")
+        report = generate_tactical_report(board, search_depth=1)
+
+        self.widget.set_tactical_report(report)
+        self.hud.update_report(report)
+
+        self.assertTrue(self.hud.lbl_alert.isVisible())
+        self.assertIn("CHECK!", self.hud.lbl_alert.text())
+
+        # Off-screen paint must draw check arrows & King brackets
+        img = QImage(640, 640, QImage.Format.Format_ARGB32)
+        img.fill(0)
+        p = QPainter(img)
+        self.widget._paint_tactics_mode(p)
+        p.end()
+
+        import numpy as np
+        arr = np.frombuffer(img.constBits(), dtype=np.uint8).reshape(640, 640, 4)
+        self.assertGreater(np.count_nonzero(arr[:, :, 3]), 200)
+
     def test_arrow_margins_preserve_piece_centers(self):
         # Verify that start and end offsets leave the center of squares unoccluded
         sq = 80.0

@@ -78,6 +78,28 @@ class TestHUDAndTacticalOverlay(unittest.TestCase):
         self.hud.update_report(None)
         self.assertIn("Waiting", self.hud.lbl_material.text())
 
+    def test_hud_check_alert(self):
+        # White King on e1 in check from Black Queen on h4
+        board = chess.Board("rnb1kbnr/ppppqppp/8/8/3P4/8/PPPP1PPP/RNBQKBNR w KQkq - 1 3")
+        self.assertTrue(board.is_check())
+        report = generate_tactical_report(board, search_depth=1)
+        self.hud.update_report(report)
+
+        self.assertTrue(self.hud.lbl_alert.isVisible())
+        self.assertIn("CHECK!", self.hud.lbl_alert.text())
+        self.assertIn("White King under attack", self.hud.lbl_alert.text())
+
+    def test_hud_stalemate_alert(self):
+        # Classic stalemate position
+        board = chess.Board("k7/8/1Q6/8/8/8/8/7K b - - 0 1")
+        self.assertTrue(board.is_stalemate())
+        report = generate_tactical_report(board, search_depth=1)
+        self.hud.update_report(report)
+
+        self.assertTrue(self.hud.lbl_alert.isVisible())
+        self.assertIn("STALEMATE", self.hud.lbl_alert.text())
+
+
 
 if __name__ == "__main__":
     unittest.main()

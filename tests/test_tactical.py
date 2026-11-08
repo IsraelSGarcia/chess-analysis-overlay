@@ -23,6 +23,9 @@ from projects.chess_tactical_analyzer import (
     find_forks,
     find_skewers,
     find_back_rank_weaknesses,
+    find_mating_threats,
+    find_removing_the_defender,
+    find_deflection_tactics,
     MotifType,
     calculate_tactical_sequences,
     find_trapped_pieces,
@@ -161,6 +164,58 @@ class TestTacticalMotifs(unittest.TestCase):
 
         self.assertTrue(len(weaknesses) >= 1)
         self.assertEqual(weaknesses[0].target_squares, (chess.G8,))
+    def test_back_rank_weakness_resolved_by_luft(self):
+        # Black King on g8 has luft on h7 because h6 pawn was pushed; White Rook on a1 cannot exploit
+        board = chess.Board("6k1/5pp1/7p/8/8/8/8/R3K3 w - - 0 1")
+        weaknesses = find_back_rank_weaknesses(board)
+        self.assertEqual(len(weaknesses), 0)
+
+
+class TestAdvancedMotifs(unittest.TestCase):
+    """Test mating threats, removing defender, and deflection tactics."""
+
+    def test_immediate_mating_threat(self):
+        # Scholar's mate setup: White Queen on h5 and Bishop on c4 attack f7
+        board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+        threats = find_mating_threats(board)
+        mating_moves = [t for t in threats if t.color == chess.WHITE]
+        self.assertTrue(any(t.target_squares == (chess.F7,) for t in mating_moves))
+
+    def test_opponent_mating_threat(self):
+        # Same setup, but it is Black to move: Black must see White's imminent threat against f7
+        board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 4 4")
+        threats = find_mating_threats(board)
+        white_threats = [t for t in threats if t.color == chess.WHITE]
+        self.assertTrue(any(t.target_squares == (chess.F7,) for t in white_threats))
+
+    def test_removing_the_defender(self):
+        # White Knight on f3 defends Bishop on d4. Black Rook on f8 attacks Knight on f3.
+        # White Bishop on d4 is attacked by Black Queen on d8.
+        board = chess.Board("3q1rk1/6pp/8/8/3B4/5N2/8/4K3 b - - 0 1")
+        attack_map = AttackDefenseMap(board)
+        motifs = find_removing_the_defender(board, attack_map)
+        matching = [
+            m for m in motifs
+            if m.motif_type == MotifType.REMOVING_DEFENDER
+            and m.source_square == chess.F8
+            and m.target_squares == (chess.F3, chess.D4)
+        ]
+        self.assertEqual(len(matching), 1)
+
+    def test_deflection_tactic(self):
+        # White Queen on e2 defends Knight on e4 which is attacked by Black Rook on e8.
+        # Black Bishop on g4 attacks White Queen on e2 (deflecting Queen away from e4).
+        board = chess.Board("4r1k1/5ppp/8/8/4N1b1/8/4QPPP/4K3 b - - 0 1")
+        attack_map = AttackDefenseMap(board)
+        deflections = find_deflection_tactics(board, attack_map)
+        matching = [
+            d for d in deflections
+            if d.motif_type == MotifType.DEFLECTION
+            and d.source_square == chess.G4
+            and d.target_squares == (chess.E2, chess.E4)
+        ]
+        self.assertEqual(len(matching), 1)
+
 
 
 class TestForcingTacticalSearch(unittest.TestCase):

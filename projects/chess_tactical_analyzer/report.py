@@ -141,7 +141,7 @@ def generate_tactical_report(
     """
     turn_color = active_turn if active_turn is not None else board.turn
     if board.turn != turn_color:
-        board = board.copy()
+        board = board.copy(stack=False)
         board.turn = turn_color
 
     # 1. Material balance

@@ -90,7 +90,7 @@ def get_legal_captures(
     -------
     List[CaptureMove]
     """
-    hyp = board.copy()
+    hyp = board.copy(stack=False)
     hyp.turn = color
     enemy_color = not color
 
@@ -145,7 +145,7 @@ def get_legal_captures(
 
             # Empty square -> Potential capture if enemy moves there
             if include_empty and target_piece is None:
-                test_board = hyp.copy()
+                test_board = hyp.copy(stack=False)
                 test_board.set_piece_at(to_sq, chess.Piece(chess.PAWN, enemy_color))
 
                 promotion = chess.QUEEN if piece.piece_type == chess.PAWN and chess.square_rank(to_sq) in (0, 7) else None

@@ -78,7 +78,7 @@ def find_trapped_pieces(
 
         # If King is in check for this color, pieces cannot move due to check evasion rules,
         # which is not piece trapping.
-        test_board = board.copy()
+        test_board = board.copy(stack=False)
         test_board.turn = c
         if test_board.is_check():
             continue

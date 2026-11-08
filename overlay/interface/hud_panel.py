@@ -227,12 +227,28 @@ class HUDPanel(QWidget):
                     blunder_sans.append(report.board.san(b.move))
                 except Exception:
                     blunder_sans.append(str(b.move))
-            blunder_summary = f"🔴 Blunder Alerts ({len(all_blunders)}): Avoid {', '.join(blunder_sans)}"
+            blunder_summary = f"🔴 Blunder Alerts ({len(all_blunders)}): Avoid {', '.join(blunder_sans[:3])}"
 
         if report.board.is_checkmate():
             winner = "Black" if turn_color == chess.WHITE else "White"
             loser = "White" if turn_color == chess.WHITE else "Black"
             self.lbl_alert.setText(f"🔴 CHECKMATE — {winner} wins! ({loser} mated)")
+            self.lbl_alert.setVisible(True)
+        elif report.board.is_check():
+            checkers = list(report.board.checkers())
+            check_sources = []
+            for chk_sq in checkers:
+                p = report.board.piece_at(chk_sq)
+                sym = p.symbol() if p else "?"
+                check_sources.append(f"{sym}@{chess.square_name(chk_sq)}")
+            src_str = f" from {', '.join(check_sources)}" if check_sources else ""
+            msg = f"🔴 CHECK! {turn_name} King under attack{src_str}"
+            if blunder_summary:
+                msg += f" | {blunder_summary.replace('🔴 ', '')}"
+            self.lbl_alert.setText(msg)
+            self.lbl_alert.setVisible(True)
+        elif report.board.is_stalemate():
+            self.lbl_alert.setText("⚖️ STALEMATE — Draw by stalemate (no legal moves)")
             self.lbl_alert.setVisible(True)
         elif blunder_summary:
             self.lbl_alert.setText(blunder_summary)
@@ -256,7 +272,9 @@ class HUDPanel(QWidget):
             motif_items = []
             for m in report.motifs[:2]:
                 motif_items.append(m.description)
-            self.lbl_motifs.setText(f"🟣 Tactical Motif: {' | '.join(motif_items)}")
+            more_count = len(report.motifs) - 2
+            extra = f" (+{more_count} more)" if more_count > 0 else ""
+            self.lbl_motifs.setText(f"🟣 Tactical Motif: {' | '.join(motif_items)}{extra}")
             self.lbl_motifs.setVisible(True)
         else:
             self.lbl_motifs.setVisible(False)
@@ -266,9 +284,11 @@ class HUDPanel(QWidget):
         hanging_enemy = report.hanging.get(not turn_color, [])
         hanging_parts = []
         if hanging_own:
-            hanging_parts.append(f"Friendly {', '.join(f'{h.piece_symbol}@{h.square_name}' for h in hanging_own[:2])} undefended")
+            extra = f" (+{len(hanging_own)-2} more)" if len(hanging_own) > 2 else ""
+            hanging_parts.append(f"Friendly {', '.join(f'{h.piece_symbol}@{h.square_name}' for h in hanging_own[:2])}{extra} undefended")
         if hanging_enemy:
-            hanging_parts.append(f"Enemy {', '.join(f'{h.piece_symbol}@{h.square_name}' for h in hanging_enemy[:2])} vulnerable")
+            extra = f" (+{len(hanging_enemy)-2} more)" if len(hanging_enemy) > 2 else ""
+            hanging_parts.append(f"Enemy {', '.join(f'{h.piece_symbol}@{h.square_name}' for h in hanging_enemy[:2])}{extra} vulnerable")
         if hanging_parts:
             self.lbl_hanging.setText(f"🟠 Hanging: {' | '.join(hanging_parts)}")
             self.lbl_hanging.setVisible(True)
