@@ -218,12 +218,12 @@ def identify_opening_from_moves(uci_moves: List[str]) -> Optional[OpeningInfo]:
 def is_opening_phase(board: chess.Board) -> bool:
     """
     Return True if the board is still in the opening phase.
-    Criteria: Move count <= 15 and both sides maintain major material.
+    Criteria: Move count <= 20 and at least 18 pieces on board.
     """
-    if board.fullmove_number > 15:
+    if board.fullmove_number > 20:
         return False
     pieces = board.piece_map()
-    if len(pieces) < 22:
+    if len(pieces) < 18:
         return False
     return True
 
