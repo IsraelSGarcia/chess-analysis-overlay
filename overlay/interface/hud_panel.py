@@ -1,15 +1,24 @@
 """
 _hud_panel.py
 =============
-Compact floating Analysis HUD for real-time tactical intelligence.
+Compact floating Analysis HUD for real-time tactical and positional intelligence.
 
 Designed for instant glanceability:
-- 🔴 Checks & Blunders (Crimson Red #FF1744)
-- 🟢 Winning Trades (Vivid Emerald Green #00E676: SEE > 0)
-- 🟣 Tactical Motifs (Electric Purple #D500F9: Forks, Pins, Skewers)
-- 🟠 Hanging Pieces (Radiant Bright Orange #FF6D00)
-- 🔵 Defended Pieces (Sky Blue #00B0FF)
-Every element visible on the chessboard has a direct 1-line plain-English explanation.
+- In Tactical Mode:
+  - 🔴 Checks & Blunders (Crimson Red #FF1744)
+  - 🟢 Winning Trades (Vivid Emerald Green #00E676: SEE > 0)
+  - 🟣 Tactical Motifs (Electric Purple #D500F9: Forks, Pins, Skewers)
+  - 🟠 Hanging Pieces (Radiant Bright Orange #FF6D00)
+  - 🧊 Trapped Pieces (Ice Cyan #00E5FF)
+  - 🔵 Defended Pieces (Sky Blue #00B0FF)
+  - 👑 Endgame Principles (Rule of the Square & Opposition)
+
+- In Positional Mode:
+  - 🟢 Outposts (Mint Green #00E676: holes in enemy camp immune to pawn attack)
+  - 🔵 Open & Semi-Open Files (Sky Blue #00B0FF: heavy piece file control)
+  - 🟠 Pawn Structure Weaknesses (Amber #FFAB00: isolated, backward, doubled, islands)
+  - 🟠 Bishop Quality (Radiant Orange #FF6D00: bad vs. active bishops)
+  - 🏛️ Space & Territory Control (Warm Gold #D29922: advanced square dominance)
 """
 
 from __future__ import annotations
@@ -28,8 +37,8 @@ from overlay.configuration.theme import THEME
 
 class HUDPanel(QWidget):
     """
-    Sleek, draggable floating HUD panel displaying live tactical analytics.
-    Matches the colors, alerts, and arrows rendered directly on the board.
+    Sleek, draggable floating HUD panel displaying live tactical or positional analytics.
+    Matches 1:1 with the colors, alerts, and annotations rendered directly on the board.
     """
 
     def __init__(self, on_close: Optional[callable] = None, on_toggle_turn: Optional[callable] = None) -> None:
@@ -37,6 +46,8 @@ class HUDPanel(QWidget):
         self.on_close_callback = on_close
         self.on_toggle_turn = on_toggle_turn or (lambda: None)
         self._drag_pos = QPoint()
+        self._mode: str = "tactics"
+        self._last_report: Optional[TacticalReport] = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -46,7 +57,7 @@ class HUDPanel(QWidget):
             | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setFixedWidth(310)
+        self.setFixedWidth(320)
         set_window_capture_exclusion(self)
 
         main_layout = QVBoxLayout(self)
@@ -58,7 +69,7 @@ class HUDPanel(QWidget):
         self.card.setObjectName("hud_card")
         self.card.setStyleSheet("""
             QFrame#hud_card {
-                background-color: rgba(16, 18, 22, 245);
+                background-color: rgba(16, 18, 22, 248);
                 border: 1px solid rgba(255, 255, 255, 28);
                 border-radius: 8px;
             }
@@ -69,7 +80,7 @@ class HUDPanel(QWidget):
         card_layout.setSpacing(5)
 
         # -----------------------------------------------------------------
-        # Header (Drag handle + Title + Close)
+        # Header (Drag handle + Title + Turn override + Close)
         # -----------------------------------------------------------------
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
@@ -128,7 +139,16 @@ class HUDPanel(QWidget):
         card_layout.addLayout(header_layout)
 
         # -----------------------------------------------------------------
-        # Glanceable Badges Grid (1:1 color matched to board annotations)
+        # Common Top Badge: Opening Classification & Trap Alerts (Soft Blue)
+        # -----------------------------------------------------------------
+        self.lbl_opening = QLabel("")
+        self.lbl_opening.setWordWrap(True)
+        self.lbl_opening.setStyleSheet(THEME.get_badge_css(THEME.OPENING_HEX, bg_alpha=0.18, border_alpha=0.65))
+        self.lbl_opening.setVisible(False)
+        card_layout.addWidget(self.lbl_opening)
+
+        # -----------------------------------------------------------------
+        # Tactical Mode Badges (1:1 color matched to board annotations)
         # -----------------------------------------------------------------
         # Urgent Check / Mate Alert (Pure Crimson Red)
         self.lbl_alert = QLabel("")
@@ -136,13 +156,6 @@ class HUDPanel(QWidget):
         self.lbl_alert.setStyleSheet(THEME.get_badge_css(THEME.BLUNDER_HEX, bg_alpha=0.22, border_alpha=0.85))
         self.lbl_alert.setVisible(False)
         card_layout.addWidget(self.lbl_alert)
-
-        # Opening Classification & Trap Alerts (Soft Blue)
-        self.lbl_opening = QLabel("")
-        self.lbl_opening.setWordWrap(True)
-        self.lbl_opening.setStyleSheet(THEME.get_badge_css(THEME.OPENING_HEX, bg_alpha=0.18, border_alpha=0.65))
-        self.lbl_opening.setVisible(False)
-        card_layout.addWidget(self.lbl_opening)
 
         # Winning Trades Pill (Vivid Emerald Green)
         self.lbl_trades = QLabel("")
@@ -179,19 +192,50 @@ class HUDPanel(QWidget):
         self.lbl_defended.setVisible(False)
         card_layout.addWidget(self.lbl_defended)
 
-        # Endgame Principles (Ice Cyan)
+        # Endgame Principles (Ice Cyan: Rule of the Square & Opposition)
         self.lbl_endgame = QLabel("")
         self.lbl_endgame.setWordWrap(True)
         self.lbl_endgame.setStyleSheet(THEME.get_badge_css(THEME.ENDGAME_HEX, bg_alpha=0.18, border_alpha=0.65))
         self.lbl_endgame.setVisible(False)
         card_layout.addWidget(self.lbl_endgame)
 
-        # Positional Structure & Outposts (Warm Gold)
-        self.lbl_positional = QLabel("")
-        self.lbl_positional.setWordWrap(True)
-        self.lbl_positional.setStyleSheet(THEME.get_badge_css(THEME.POSITIONAL_HEX, bg_alpha=0.18, border_alpha=0.65))
-        self.lbl_positional.setVisible(False)
-        card_layout.addWidget(self.lbl_positional)
+        # -----------------------------------------------------------------
+        # Positional Mode Badges (1:1 matched to positional board highlights)
+        # -----------------------------------------------------------------
+        # 1. Outposts (Mint Green)
+        self.lbl_pos_outposts = QLabel("")
+        self.lbl_pos_outposts.setWordWrap(True)
+        self.lbl_pos_outposts.setStyleSheet(THEME.get_badge_css(THEME.OUTPOST_HEX, bg_alpha=0.20, border_alpha=0.75))
+        self.lbl_pos_outposts.setVisible(False)
+        card_layout.addWidget(self.lbl_pos_outposts)
+
+        # 2. Open & Semi-Open Files (Sky Blue)
+        self.lbl_pos_files = QLabel("")
+        self.lbl_pos_files.setWordWrap(True)
+        self.lbl_pos_files.setStyleSheet(THEME.get_badge_css(THEME.OPEN_FILE_HEX, bg_alpha=0.20, border_alpha=0.75))
+        self.lbl_pos_files.setVisible(False)
+        card_layout.addWidget(self.lbl_pos_files)
+
+        # 3. Pawn Structure Weaknesses (Amber)
+        self.lbl_pos_pawns = QLabel("")
+        self.lbl_pos_pawns.setWordWrap(True)
+        self.lbl_pos_pawns.setStyleSheet(THEME.get_badge_css(THEME.PAWN_WEAKNESS_HEX, bg_alpha=0.20, border_alpha=0.75))
+        self.lbl_pos_pawns.setVisible(False)
+        card_layout.addWidget(self.lbl_pos_pawns)
+
+        # 4. Bishop Quality (Radiant Orange)
+        self.lbl_pos_bishops = QLabel("")
+        self.lbl_pos_bishops.setWordWrap(True)
+        self.lbl_pos_bishops.setStyleSheet(THEME.get_badge_css(THEME.BAD_BISHOP_HEX, bg_alpha=0.20, border_alpha=0.75))
+        self.lbl_pos_bishops.setVisible(False)
+        card_layout.addWidget(self.lbl_pos_bishops)
+
+        # 5. Space & Territory Advantage (Warm Gold)
+        self.lbl_pos_space = QLabel("")
+        self.lbl_pos_space.setWordWrap(True)
+        self.lbl_pos_space.setStyleSheet(THEME.get_badge_css(THEME.POSITIONAL_HEX, bg_alpha=0.20, border_alpha=0.75))
+        self.lbl_pos_space.setVisible(False)
+        card_layout.addWidget(self.lbl_pos_space)
 
         # -----------------------------------------------------------------
         # 3. Compact Footer (Material balance + Turn)
@@ -218,28 +262,30 @@ class HUDPanel(QWidget):
         set_window_capture_exclusion(self)
 
     # -------------------------------------------------------------------------
-    # Update from TacticalReport
+    # Mode Switching: Strictly separates Tactical vs Positional Intelligence
     # -------------------------------------------------------------------------
 
     def set_mode(self, mode: str) -> None:
         """Update header title and context depending on active analysis mode."""
-        if mode == "positional":
+        self._mode = mode.lower()
+        if self._mode == "positional":
             self.lbl_title.setText("Positional Intelligence")
         else:
             self.lbl_title.setText("Tactical Intelligence")
 
+        if self._last_report:
+            self.update_report(self._last_report)
+
+    # -------------------------------------------------------------------------
+    # Update from TacticalReport
+    # -------------------------------------------------------------------------
+
     def update_report(self, report: Optional[TacticalReport]) -> None:
         """Update HUD UI elements from a TacticalReport."""
+        self._last_report = report
+
         if report is None:
-            self.lbl_alert.setVisible(False)
-            self.lbl_opening.setVisible(False)
-            self.lbl_trades.setVisible(False)
-            self.lbl_motifs.setVisible(False)
-            self.lbl_hanging.setVisible(False)
-            self.lbl_trapped.setVisible(False)
-            self.lbl_defended.setVisible(False)
-            self.lbl_endgame.setVisible(False)
-            self.lbl_positional.setVisible(False)
+            self._hide_all_badges()
             self.lbl_material.setText("Waiting for board position...")
             self.adjustSize()
             return
@@ -248,8 +294,167 @@ class HUDPanel(QWidget):
         turn_name = "White" if turn_color == chess.WHITE else "Black"
         self.btn_turn_hud.setText(f"{turn_name} to Move")
 
-        # 1. Check / Mate Alert & Blunders (Red #FF1744)
-        all_blunders = report.blunders.get(turn_color, []) if hasattr(report, 'blunders') else []
+        # ---------------------------------------------------------------------
+        # Branch 1: POSITIONAL INTELLIGENCE MODE
+        # (Strictly hides tactical pills; displays outposts, files, pawns, bishops, space)
+        # ---------------------------------------------------------------------
+        if self._mode == "positional":
+            self._hide_tactical_badges()
+            self._update_positional_badges(report, turn_color)
+        # ---------------------------------------------------------------------
+        # Branch 2: TACTICAL INTELLIGENCE MODE
+        # (Strictly hides positional pills; displays winning trades, motifs, blunders, hanging)
+        # ---------------------------------------------------------------------
+        else:
+            self._hide_positional_badges()
+            self._update_tactical_badges(report, turn_color)
+
+        # Common Footer: Material Balance & Turn
+        lead = report.white_material_lead
+        if lead > 0:
+            self.lbl_material.setText(f"Material: White +{lead:.1f}")
+            self.lbl_material.setStyleSheet("color: #58a6ff; font-size: 10px; font-weight: 600;")
+        elif lead < 0:
+            self.lbl_material.setText(f"Material: Black +{abs(lead):.1f}")
+            self.lbl_material.setStyleSheet("color: #ff7b72; font-size: 10px; font-weight: 600;")
+        else:
+            self.lbl_material.setText("Material: Equal")
+            self.lbl_material.setStyleSheet("color: #8b949e; font-size: 10px; font-weight: 600;")
+
+        turn_icon = "⚪" if turn_color == chess.WHITE else "⚫"
+        self.lbl_turn.setText(f"{turn_name} to move {turn_icon}")
+
+        self.adjustSize()
+
+    def _hide_all_badges(self) -> None:
+        self._hide_tactical_badges()
+        self._hide_positional_badges()
+        self.lbl_opening.setVisible(False)
+
+    def _hide_tactical_badges(self) -> None:
+        self.lbl_alert.setVisible(False)
+        self.lbl_trades.setVisible(False)
+        self.lbl_motifs.setVisible(False)
+        self.lbl_hanging.setVisible(False)
+        self.lbl_trapped.setVisible(False)
+        self.lbl_defended.setVisible(False)
+        self.lbl_endgame.setVisible(False)
+
+    def _hide_positional_badges(self) -> None:
+        self.lbl_pos_outposts.setVisible(False)
+        self.lbl_pos_files.setVisible(False)
+        self.lbl_pos_pawns.setVisible(False)
+        self.lbl_pos_bishops.setVisible(False)
+        self.lbl_pos_space.setVisible(False)
+
+    def _update_positional_badges(self, report: TacticalReport, turn_color: chess.Color) -> None:
+        """Render dedicated positional analysis corresponding 1:1 with board highlights."""
+        pos = getattr(report, "positional", None)
+        if not pos:
+            self._hide_positional_badges()
+            return
+
+        # 0. Opening classification if in opening
+        if getattr(report, "opening", None):
+            self.lbl_opening.setText(f"📖 {report.opening.display_str}")
+            self.lbl_opening.setVisible(True)
+        else:
+            self.lbl_opening.setVisible(False)
+
+        # 1. Outposts (Mint Green)
+        if pos.outposts:
+            out_parts = []
+            for o in pos.outposts[:3]:
+                side = "White" if o.color == chess.WHITE else "Black"
+                occ = f" ({chess.piece_symbol(o.occupant_piece_type).upper()})" if o.occupant_piece_type else " (unoccupied)"
+                out_parts.append(f"{side} {o.square_name}{occ}")
+            self.lbl_pos_outposts.setText(f"🟢 Outposts: {', '.join(out_parts)} — immune to pawns")
+            self.lbl_pos_outposts.setVisible(True)
+        else:
+            self.lbl_pos_outposts.setText("🟢 Outposts: None established yet")
+            self.lbl_pos_outposts.setVisible(True)
+
+        # 2. Open & Semi-Open Files (Sky Blue)
+        if pos.open_files:
+            file_descs = []
+            for of in pos.open_files[:2]:
+                f_name = of.file_letter + "-file"
+                if of.is_completely_open:
+                    r_w = [chess.square_name(s) for s in of.rooks_controlling.get(chess.WHITE, [])]
+                    r_b = [chess.square_name(s) for s in of.rooks_controlling.get(chess.BLACK, [])]
+                    ctrls = []
+                    if r_w: ctrls.append(f"W R@{','.join(r_w)}")
+                    if r_b: ctrls.append(f"B R@{','.join(r_b)}")
+                    ctrl_str = f" ({', '.join(ctrls)})" if ctrls else ""
+                    file_descs.append(f"Open {f_name}{ctrl_str}")
+                elif of.is_semi_open_for is not None:
+                    side = "White" if of.is_semi_open_for == chess.WHITE else "Black"
+                    file_descs.append(f"Semi-open {f_name} ({side})")
+            if file_descs:
+                self.lbl_pos_files.setText(f"🔵 Files: {' | '.join(file_descs)}")
+                self.lbl_pos_files.setVisible(True)
+            else:
+                self.lbl_pos_files.setVisible(False)
+        else:
+            self.lbl_pos_files.setText("🔵 Files: Closed board (all 8 files contested)")
+            self.lbl_pos_files.setVisible(True)
+
+        # 3. Pawn Structure Weaknesses (Amber)
+        iso_w = [chess.square_name(s) for s in pos.pawn_structure.isolated.get(chess.WHITE, [])]
+        iso_b = [chess.square_name(s) for s in pos.pawn_structure.isolated.get(chess.BLACK, [])]
+        dbl_w = [chess.square_name(s) for s in pos.pawn_structure.doubled.get(chess.WHITE, [])]
+        dbl_b = [chess.square_name(s) for s in pos.pawn_structure.doubled.get(chess.BLACK, [])]
+        bkw_w = [chess.square_name(s) for s in pos.pawn_structure.backward.get(chess.WHITE, [])]
+        bkw_b = [chess.square_name(s) for s in pos.pawn_structure.backward.get(chess.BLACK, [])]
+
+        pawn_items = []
+        all_iso = iso_w + iso_b
+        all_dbl = dbl_w + dbl_b
+        all_bkw = bkw_w + bkw_b
+        if all_iso: pawn_items.append(f"Isolated {', '.join(all_iso[:2])}")
+        if all_dbl: pawn_items.append(f"Doubled {', '.join(all_dbl[:2])}")
+        if all_bkw: pawn_items.append(f"Backward {', '.join(all_bkw[:2])}")
+
+        isl_str = f"Islands: W{pos.pawn_structure.pawn_islands[chess.WHITE]}/B{pos.pawn_structure.pawn_islands[chess.BLACK]}"
+        if pawn_items:
+            self.lbl_pos_pawns.setText(f"🟠 Pawns: {' | '.join(pawn_items)} ({isl_str})")
+        else:
+            self.lbl_pos_pawns.setText(f"🟠 Pawns: Healthy structure ({isl_str})")
+        self.lbl_pos_pawns.setVisible(True)
+
+        # 4. Bishop Quality (Radiant Orange)
+        bad_bishops = [b for b in pos.bishops if b.is_bad]
+        if bad_bishops:
+            b_descs = [f"{'White' if b.color == chess.WHITE else 'Black'} B@{b.square_name} ({b.friendly_pawns_on_same_color} pawns on color)" for b in bad_bishops]
+            self.lbl_pos_bishops.setText(f"🟠 Bad Bishop: {', '.join(b_descs)}")
+            self.lbl_pos_bishops.setVisible(True)
+        else:
+            self.lbl_pos_bishops.setText("Active Bishops: Both sides hold open bishop diagonals")
+            self.lbl_pos_bishops.setVisible(True)
+
+        # 5. Space & Territory Control (Warm Gold)
+        w_space = pos.space_control.get(chess.WHITE, 0)
+        b_space = pos.space_control.get(chess.BLACK, 0)
+        diff = w_space - b_space
+        lead_str = f" (+{diff} White advantage)" if diff > 0 else (f" (+{abs(diff)} Black advantage)" if diff < 0 else " (Equal territory)")
+        self.lbl_pos_space.setText(f"🏛️ Space: White {w_space} vs Black {b_space} squares{lead_str}")
+        self.lbl_pos_space.setVisible(True)
+
+    def _update_tactical_badges(self, report: TacticalReport, turn_color: chess.Color) -> None:
+        """Render tactical motifs, winning trades, and blunders in Tactics Mode."""
+        # 1. Opening Book & Traps
+        if getattr(report, "opening", None):
+            trap_str = f" | ⚠️ {report.opening_traps[0].name}" if report.opening_traps else ""
+            self.lbl_opening.setText(f"📖 {report.opening.display_str}{trap_str}")
+            self.lbl_opening.setVisible(True)
+        elif getattr(report, "opening_traps", None):
+            self.lbl_opening.setText(f"⚠️ {report.opening_traps[0].description}")
+            self.lbl_opening.setVisible(True)
+        else:
+            self.lbl_opening.setVisible(False)
+
+        # 2. Check / Mate Alert & Blunders (Red #FF1744)
+        all_blunders = report.blunders.get(turn_color, []) if hasattr(report, "blunders") else []
         blunder_summary = ""
         if all_blunders:
             blunder_sans = []
@@ -271,22 +476,20 @@ class HUDPanel(QWidget):
         else:
             self.lbl_alert.setVisible(False)
 
-        # 2. Winning Trades for Active Turn (SEE > 0, Emerald Green #00E676)
+        # 3. Winning Trades for Active Turn (SEE > 0, Emerald Green #00E676)
         fav_list = report.favorable_captures(turn_color)
         if fav_list:
             trades_desc = []
             for f in fav_list[:2]:
                 trades_desc.append(f"{f.sequence[0]} (+{f.score/100:.1f})")
-            self.lbl_trades.setText(f"🟢 Winning Trade: {', '.join(trades_desc)} — net material exchange")
+            self.lbl_trades.setText(f"🟢 Winning Trade: {', '.join(trades_desc)} — net material gain")
             self.lbl_trades.setVisible(True)
         else:
             self.lbl_trades.setVisible(False)
 
         # 4. Tactical Motifs (Electric Purple #D500F9: Forks, Pins, Skewers)
         if report.motifs:
-            motif_items = []
-            for m in report.motifs[:2]:
-                motif_items.append(m.description)
+            motif_items = [m.description for m in report.motifs[:2]]
             more_count = len(report.motifs) - 2
             extra = f" (+{more_count} more)" if more_count > 0 else ""
             self.lbl_motifs.setText(f"🟣 Tactical Motif: {' | '.join(motif_items)}{extra}")
@@ -310,8 +513,8 @@ class HUDPanel(QWidget):
         else:
             self.lbl_hanging.setVisible(False)
 
-        # 5b. Trapped Pieces (Ice Cyan #00E5FF)
-        trapped_map = getattr(report, 'trapped_pieces', {})
+        # 6. Trapped Pieces (Ice Cyan #00E5FF)
+        trapped_map = getattr(report, "trapped_pieces", {})
         trapped_own = trapped_map.get(turn_color, [])
         trapped_enemy = trapped_map.get(not turn_color, [])
         trapped_parts = []
@@ -325,8 +528,8 @@ class HUDPanel(QWidget):
         else:
             self.lbl_trapped.setVisible(False)
 
-        # 6. Defended Pieces (Sky Blue #00B0FF)
-        def_pieces = getattr(report.attack_map, 'defended_pieces', set())
+        # 7. Defended Pieces (Sky Blue #00B0FF)
+        def_pieces = getattr(report.attack_map, "defended_pieces", set())
         own_def_count = sum(1 for sq in def_pieces if report.board.piece_at(sq) and report.board.piece_at(sq).color == turn_color)
         if own_def_count > 0:
             self.lbl_defended.setText(f"🔵 Defense: {own_def_count} friendly pieces protected")
@@ -334,82 +537,18 @@ class HUDPanel(QWidget):
         else:
             self.lbl_defended.setVisible(False)
 
-        # 1b. Opening Book & Traps
-        if getattr(report, 'opening', None):
-            trap_str = f" | ⚠️ {report.opening_traps[0].name}" if report.opening_traps else ""
-            self.lbl_opening.setText(f"📖 {report.opening.display_str}{trap_str}")
-            self.lbl_opening.setVisible(True)
-        elif getattr(report, 'opening_traps', None):
-            self.lbl_opening.setText(f"⚠️ {report.opening_traps[0].description}")
-            self.lbl_opening.setVisible(True)
-        else:
-            self.lbl_opening.setVisible(False)
-
-        # 6b. Endgame Principles (Rule of the Square & Opposition)
+        # 8. Endgame Principles (Rule of the Square & Opposition)
         endgame_parts = []
-        for rw in getattr(report, 'runaway_pawns', []):
+        for rw in getattr(report, "runaway_pawns", []):
             if rw.can_promote_unstoppably:
                 endgame_parts.append(f"Passer on {rw.pawn_name} unstoppably promotes!")
-        if getattr(report, 'opposition', None):
+        if getattr(report, "opposition", None):
             endgame_parts.append(report.opposition.description)
         if endgame_parts:
             self.lbl_endgame.setText(f"👑 Endgame: {' | '.join(endgame_parts)}")
             self.lbl_endgame.setVisible(True)
         else:
             self.lbl_endgame.setVisible(False)
-
-        # 6c. Positional Structure & Outposts
-        pos = getattr(report, 'positional', None)
-        if pos:
-            pos_parts = []
-            if pos.outposts:
-                out_strs = [f"{chess.piece_symbol(o.occupant_piece_type).upper() if o.occupant_piece_type else ''}@{o.square_name}" for o in pos.outposts[:2]]
-                pos_parts.append(f"Outposts ({', '.join(out_strs)})")
-            # Open and semi-open files
-            open_f = [of.file_letter for of in pos.open_files if of.is_completely_open]
-            if open_f:
-                pos_parts.append(f"Open: {', '.join(open_f)} file")
-            # Weak pawns
-            iso = pos.pawn_structure.isolated.get(turn_color, [])
-            dbl = pos.pawn_structure.doubled.get(turn_color, [])
-            if iso:
-                pos_parts.append(f"Isolated @ {', '.join(chess.square_name(s) for s in iso[:2])}")
-            elif dbl:
-                pos_parts.append(f"Doubled @ {chess.square_name(dbl[0])}")
-            # Bad bishops
-            bad_b = [b for b in pos.bishops if b.is_bad and b.color == turn_color]
-            if bad_b:
-                pos_parts.append(f"Bad Bishop ({bad_b[0].square_name})")
-            # Space control
-            sp_own = pos.space_control.get(turn_color, 0)
-            sp_opp = pos.space_control.get(not turn_color, 0)
-            if sp_own > 0 or sp_opp > 0:
-                pos_parts.append(f"Space ({sp_own} vs {sp_opp})")
-
-            if pos_parts:
-                self.lbl_positional.setText(f"🏛️ Structure: {' | '.join(pos_parts[:3])}")
-                self.lbl_positional.setVisible(True)
-            else:
-                self.lbl_positional.setVisible(False)
-        else:
-            self.lbl_positional.setVisible(False)
-
-        # 7. Material Balance & Turn
-        lead = report.white_material_lead
-        if lead > 0:
-            self.lbl_material.setText(f"Material: White +{lead:.1f}")
-            self.lbl_material.setStyleSheet("color: #58a6ff; font-size: 10px; font-weight: 600;")
-        elif lead < 0:
-            self.lbl_material.setText(f"Material: Black +{abs(lead):.1f}")
-            self.lbl_material.setStyleSheet("color: #ff7b72; font-size: 10px; font-weight: 600;")
-        else:
-            self.lbl_material.setText("Material: Equal")
-            self.lbl_material.setStyleSheet("color: #8b949e; font-size: 10px; font-weight: 600;")
-
-        turn_icon = "⚪" if turn_color == chess.WHITE else "⚫"
-        self.lbl_turn.setText(f"{turn_name} to move {turn_icon}")
-
-        self.adjustSize()
 
     def position_beside_board(self, left: int, top: int, width: int, height: int) -> None:
         """Position HUD panel neatly to the right of the board."""
@@ -423,7 +562,7 @@ class HUDPanel(QWidget):
             self.on_close_callback()
 
     # -------------------------------------------------------------------------
-    # Drag Handling
+    # Draggable Window Mechanics
     # -------------------------------------------------------------------------
 
     def mousePressEvent(self, event) -> None:
@@ -438,4 +577,3 @@ class HUDPanel(QWidget):
 
     def mouseReleaseEvent(self, event) -> None:
         self._drag_pos = QPoint()
-        event.accept()

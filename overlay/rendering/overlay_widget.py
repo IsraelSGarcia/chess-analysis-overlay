@@ -428,7 +428,7 @@ class OverlayWidget(QWidget):
             logger.debug("Runaway pawn paint error: %s", exc)
 
     def _paint_positional_mode(self, p: QPainter) -> None:
-        """Positional analysis: Outposts, pawn structure weaknesses, open files."""
+        """High-visibility Positional analysis: Outposts, pawn weaknesses, open files, bad bishops."""
         cfg = self._config
         rep = self._tactical_report
         if not rep or not rep.positional:
@@ -438,21 +438,32 @@ class OverlayWidget(QWidget):
         sq_dim = min(self.width(), self.height()) / 8.0
 
         try:
-            # 1. Controlled Open and Semi-Open Files (Faint Sky Blue vertical band)
+            # 1. Controlled Open and Semi-Open Files (High-Visibility Sky Blue vertical band + solid boundaries)
             for of in pos.open_files:
                 col = of.file_idx if not cfg.flipped else 7 - of.file_idx
                 file_rect = QRectF(col * sq_dim, 0, sq_dim, 8 * sq_dim)
-                p.fillRect(file_rect, THEME.OPEN_FILE)
-                p.setPen(QPen(THEME.OPEN_FILE_BORDER, 1.0, Qt.PenStyle.DotLine))
-                p.drawRect(file_rect)
+                fill_color = THEME.OPEN_FILE if of.is_completely_open else QColor(0, 176, 255, 45)
+                p.fillRect(file_rect, fill_color)
+                # Crisp left and right file boundary lines
+                p.setPen(QPen(THEME.OPEN_FILE_BORDER, 2.0, Qt.PenStyle.SolidLine))
+                p.drawLine(QPointF(file_rect.left(), 0), QPointF(file_rect.left(), 8 * sq_dim))
+                p.drawLine(QPointF(file_rect.right(), 0), QPointF(file_rect.right(), 8 * sq_dim))
 
-            # 2. Outpost Squares (Gentle Mint Green fill + Corner Brackets)
+            # 2. Outpost Squares (Vibrant Mint Green fill + 2px border + Bold Corner Brackets)
             for out in pos.outposts:
                 rect = self._get_square_rect(out.square)
                 p.fillRect(rect, THEME.OUTPOST)
-                self._draw_corner_brackets(p, rect, THEME.OUTPOST_BORDER, bracket_len=THEME.BRACKET_LEN, pen_width=THEME.BRACKET_PEN_WIDTH)
+                p.setPen(QPen(THEME.OUTPOST_BORDER, 1.8, Qt.PenStyle.SolidLine))
+                p.drawRect(rect)
+                self._draw_corner_brackets(
+                    p,
+                    rect,
+                    THEME.OUTPOST_BORDER,
+                    bracket_len=min(18.0, sq_dim * 0.36),
+                    pen_width=3.2,
+                )
 
-            # 3. Pawn Structure Weaknesses (Amber corner brackets on isolated/backward/doubled)
+            # 3. Pawn Structure Weaknesses (Amber Fill + Bold Amber Corner Brackets)
             weak_pawns = set()
             for color_key in (chess.WHITE, chess.BLACK):
                 weak_pawns.update(pos.pawn_structure.isolated.get(color_key, []))
@@ -461,14 +472,27 @@ class OverlayWidget(QWidget):
 
             for sq in weak_pawns:
                 rect = self._get_square_rect(sq)
-                self._draw_corner_brackets(p, rect, THEME.PAWN_WEAKNESS, bracket_len=8.0, pen_width=1.8)
+                p.fillRect(rect, THEME.PAWN_WEAKNESS_FILL)
+                self._draw_corner_brackets(
+                    p,
+                    rect,
+                    THEME.PAWN_WEAKNESS,
+                    bracket_len=min(16.0, sq_dim * 0.34),
+                    pen_width=3.0,
+                )
 
-            # 4. Bad Bishops
+            # 4. Bad Bishops (Radiant Orange Fill + Bold Corner Brackets)
             for b in pos.bishops:
                 if b.is_bad:
                     rect = self._get_square_rect(b.square)
-                    p.setPen(QPen(THEME.BAD_BISHOP, 1.8, Qt.PenStyle.DashDotLine))
-                    p.drawRect(rect)
+                    p.fillRect(rect, THEME.BAD_BISHOP_FILL)
+                    self._draw_corner_brackets(
+                        p,
+                        rect,
+                        THEME.BAD_BISHOP,
+                        bracket_len=min(16.0, sq_dim * 0.34),
+                        pen_width=3.0,
+                    )
 
         except Exception as exc:
             logger.debug("Positional paint error: %s", exc)

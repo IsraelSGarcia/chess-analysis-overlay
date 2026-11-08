@@ -197,6 +197,8 @@ def main() -> None:
                 hud_visible=settings.show_hud,
                 auto_track=(settings.auto_track and not settings.manual_locked),
             )
+        if hud_panel:
+            hud_panel.set_mode(settings.active_mode)
 
     # -------------------------------------------------------------------------
     # Actions (Executed safely on Qt main thread)
@@ -216,8 +218,10 @@ def main() -> None:
         settings.save()
         overlay.set_config(make_config())
         if settings.active_mode in ("tactics", "positional"):
-            if hud_panel and settings.show_hud:
-                hud_panel.show()
+            if hud_panel:
+                hud_panel.set_mode(settings.active_mode)
+                if settings.show_hud:
+                    hud_panel.show()
         else:
             if hud_panel:
                 hud_panel.hide()
@@ -233,8 +237,10 @@ def main() -> None:
         settings.save()
         overlay.set_config(make_config())
         if settings.active_mode in ("tactics", "positional"):
-            if hud_panel and settings.show_hud:
-                hud_panel.show()
+            if hud_panel:
+                hud_panel.set_mode(settings.active_mode)
+                if settings.show_hud:
+                    hud_panel.show()
         else:
             if hud_panel:
                 hud_panel.hide()
@@ -485,6 +491,7 @@ def main() -> None:
             tac_report = generate_tactical_report(test_b, search_depth=3)
             overlay.set_tactical_report(tac_report)
             if hud_panel:
+                hud_panel.set_mode(settings.active_mode)
                 hud_panel.update_report(tac_report)
         except Exception as t_exc:
             logger.debug("Tactical analysis error in FEN mode: %s", t_exc)
