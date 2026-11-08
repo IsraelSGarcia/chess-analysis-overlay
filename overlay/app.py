@@ -81,6 +81,7 @@ class HotkeyBridge(QObject):
     sig_toggle_enemy = Signal()
     sig_toggle_defense = Signal()
     sig_toggle_turn = Signal()
+    sig_toggle_positional = Signal()
     sig_toggle_flip = Signal()
     sig_toggle_hl = Signal()
     sig_toggle_hud = Signal()
@@ -207,11 +208,30 @@ def main() -> None:
         refresh_ui_states()
 
     def toggle_mode():
-        """Switch between Legal Captures and Tactical Analysis modes."""
-        settings.active_mode = "captures" if settings.active_mode == "tactics" else "tactics"
+        """Cycle between Tactics -> Captures -> Positional -> Tactics modes."""
+        modes = ["tactics", "captures", "positional"]
+        current_idx = modes.index(settings.active_mode) if settings.active_mode in modes else 0
+        settings.active_mode = modes[(current_idx + 1) % len(modes)]
         settings.save()
         overlay.set_config(make_config())
-        if settings.active_mode == "tactics":
+        if settings.active_mode in ("tactics", "positional"):
+            if hud_panel and settings.show_hud:
+                hud_panel.show()
+        else:
+            if hud_panel:
+                hud_panel.hide()
+        refresh_ui_states()
+        trigger_immediate_update()
+
+    def toggle_positional():
+        """Directly toggle Positional Analysis mode (Ctrl+Alt+P)."""
+        if settings.active_mode == "positional":
+            settings.active_mode = "tactics"
+        else:
+            settings.active_mode = "positional"
+        settings.save()
+        overlay.set_config(make_config())
+        if settings.active_mode in ("tactics", "positional"):
             if hud_panel and settings.show_hud:
                 hud_panel.show()
         else:
@@ -418,6 +438,7 @@ def main() -> None:
     bridge = HotkeyBridge()
     bridge.sig_toggle_master.connect(toggle_master)
     bridge.sig_toggle_mode.connect(toggle_mode)
+    bridge.sig_toggle_positional.connect(toggle_positional)
     bridge.sig_toggle_player.connect(toggle_player)
     bridge.sig_toggle_enemy.connect(toggle_enemy)
     bridge.sig_toggle_defense.connect(toggle_defense)
@@ -434,6 +455,7 @@ def main() -> None:
         # Conflict-free shortcuts using Ctrl+Alt modifiers
         keyboard.add_hotkey("ctrl+alt+x", bridge.sig_toggle_master.emit, suppress=False)
         keyboard.add_hotkey("ctrl+alt+m", bridge.sig_toggle_mode.emit, suppress=False)
+        keyboard.add_hotkey("ctrl+alt+p", bridge.sig_toggle_positional.emit, suppress=False)
         keyboard.add_hotkey("ctrl+alt+a", bridge.sig_toggle_player.emit, suppress=False)
         keyboard.add_hotkey("ctrl+alt+s", bridge.sig_toggle_enemy.emit, suppress=False)
         keyboard.add_hotkey("ctrl+alt+d", bridge.sig_toggle_defense.emit, suppress=False)

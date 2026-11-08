@@ -121,8 +121,10 @@ class AppTrayIcon(QSystemTrayIcon):
         self.act_master.setChecked(overlay_visible)
         if mode == "tactics":
             self.act_mode.setText("Mode: Tactical Analysis (Switch to Captures)")
+        elif mode == "positional":
+            self.act_mode.setText("Mode: Positional Analysis (Switch to Tactics)")
         else:
-            self.act_mode.setText("Mode: Legal Captures (Switch to Tactics)")
+            self.act_mode.setText("Mode: Legal Captures (Switch to Positional)")
         self.act_hud.setChecked(hud_visible)
         self.act_auto.setChecked(auto_track)
 

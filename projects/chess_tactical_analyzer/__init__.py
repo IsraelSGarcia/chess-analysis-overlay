@@ -41,6 +41,36 @@ from .trapped import TrappedPiece, find_trapped_pieces
 from .xray import XRayRay, find_xray_rays
 from .blunders import BlunderMove, find_all_blunders
 from .forcing_search import TacticalSequence, calculate_tactical_sequences
+from .openings import (
+    OpeningInfo,
+    OpeningTrap,
+    identify_opening_from_moves,
+    detect_opening_traps,
+    is_opening_phase,
+)
+from .endgames import (
+    RunawayPawnInfo,
+    OppositionInfo,
+    PassedPawnInfo,
+    is_endgame,
+    is_passed_pawn,
+    evaluate_runaway_passed_pawns,
+    detect_king_opposition,
+    classify_passed_pawns,
+)
+from .positional import (
+    OutpostInfo,
+    PawnStructureAnalysis,
+    OpenFileControl,
+    BishopQuality,
+    PositionalReport,
+    find_outposts,
+    analyze_pawn_structure,
+    analyze_open_files,
+    evaluate_bishops,
+    evaluate_space,
+    generate_positional_report,
+)
 from .report import TacticalReport, generate_tactical_report
 
 __all__ = [
@@ -77,4 +107,28 @@ __all__ = [
     "find_all_blunders",
     "TacticalReport",
     "generate_tactical_report",
+    "OpeningInfo",
+    "OpeningTrap",
+    "identify_opening_from_moves",
+    "detect_opening_traps",
+    "is_opening_phase",
+    "RunawayPawnInfo",
+    "OppositionInfo",
+    "PassedPawnInfo",
+    "is_endgame",
+    "is_passed_pawn",
+    "evaluate_runaway_passed_pawns",
+    "detect_king_opposition",
+    "classify_passed_pawns",
+    "OutpostInfo",
+    "PawnStructureAnalysis",
+    "OpenFileControl",
+    "BishopQuality",
+    "PositionalReport",
+    "find_outposts",
+    "analyze_pawn_structure",
+    "analyze_open_files",
+    "evaluate_bishops",
+    "evaluate_space",
+    "generate_positional_report",
 ]

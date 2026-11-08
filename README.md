@@ -25,15 +25,15 @@ chess-analysis-overlay/
 │   └── shared_analysis/             # Static Exchange Evaluation (SEE), attack/defense maps, piece values
 │
 ├── projects/                        # Specialized analytical subprojects
-│   ├── chess-capture-visualizer/    # Legal capture & defense moves for both sides simultaneously
-│   └── chess-tactical-analyzer/     # Tactical motifs, hanging pieces, trapped pieces, X-rays, blunders
+│   ├── chess_capture_visualizer/    # Legal capture & defense moves for both sides simultaneously
+│   └── chess_tactical_analyzer/     # Tactics, Openings (ECO/Traps), Endgames (Square/Opposition), Positional
 │
 ├── overlay/                         # Unified presentation layer
 │   ├── rendering/                   # Hardware-accelerated transparent canvas (arrows, brackets, rays)
 │   ├── interface/                   # Draggable control bar, floating analysis HUD panel, system tray
 │   └── configuration/               # Centralized VisualTheme design system, persistent settings
 │
-└── tests/                           # Complete test suite covering all modules (113 unit tests)
+└── tests/                           # Complete test suite covering all modules (148 unit tests)
 ```
 
 ---
@@ -71,10 +71,11 @@ You do **not** need programming experience to use this app. Follow these 3 simpl
 
 ## Specialized Analytical Modes
 
-Switch between analytical modes at any time with the **`Tactics` / `Captures`** button on the toolbar or via **`Ctrl + Alt + M`**:
+Switch between analytical lenses at any time with the **`Tactics` / `Captures` / `Positional`** button on the toolbar or via **`Ctrl + Alt + M`** (or jump directly to Positional mode with **`Ctrl + Alt + P`**):
 
 ### 1. Tactical Analyzer Mode (`Mode: Tactics`)
-Specialized analytical mode focusing on concrete tactical motifs, vulnerabilities, and exchanges:
+Specialized analytical mode focusing on concrete tactical motifs, vulnerabilities, and game-phase awareness:
+- **Opening Phase (Moves 1–15)**: Displays classified ECO code (A00–E99), opening name, and variation on the HUD with zero board clutter, while alerting to dangerous opening traps (Noah's Ark, Fishing Pole, Légal, Elephant, Budapest).
 - **Winning Trade Arrows**: Emerald Green arrows (`#00E676`) on favorable captures (Static Exchange Evaluation $> 0$) and free hanging pieces.
 - **Multi-Target Fork Arrows**: Vivid purple arrows (`#D500F9`) radiating from attacking pieces directly to forked victims.
 - **Pins & Skewers**: Directed lines highlighting absolute pins (to the King) and relative pins (to the Queen/Rook).
@@ -84,7 +85,8 @@ Specialized analytical mode focusing on concrete tactical motifs, vulnerabilitie
 - **Removing the Defender & Mating Threats**: Visualizing attacks on sole defenders and immediate checkmate opportunities.
 - **Subtle Blunder Warnings**: Semi-transparent Crimson Red arrows (`#FF1744`, opacity 0.43, width mult 0.55) indicating candidate moves that immediately lose material or allow checkmate.
 - **Hanging Piece Alerts**: Radiant Orange dashed boxes and threat arrows (`#FF6D00`) on undefended or tactically vulnerable pieces.
-- **Analysis HUD Panel**: Floating, collapsible companion card showing material balance, hanging piece counts, and active motif badges with click-to-highlight filtering.
+- **Endgame Phase (<= 10 pieces)**: Automatically draws the **Rule of the Square** bounding box for runaway passed pawns to visualize unstoppable promotions, while computing King opposition (direct, distant, diagonal) on the HUD.
+- **Analysis HUD Panel**: Floating, collapsible companion card showing material balance, hanging piece counts, opening/endgame status, and active motif badges with click-to-highlight filtering.
 
 ### 2. Capture Visualizer Mode (`Mode: Captures`)
 The classic capture visualizer displaying the complete legal influence and square control network:
@@ -92,6 +94,14 @@ The classic capture visualizer displaying the complete legal influence and squar
 - **Enemy Legal Captures**: Vibrant Red arrows for all opponent captures.
 - **Defending Arrows**: Royal Blue arrows showing which friendly pieces protect other friendly pieces.
 - **Square Control Highlights**: Blue (friendly influence), Red (enemy influence), and Violet (contested squares).
+
+### 3. Positional Analyzer Mode (`Mode: Positional`)
+A dedicated strategic lens displaying long-term positional features and structure:
+- **Knight Outposts**: Gentle Mint Green filled squares with corner brackets for advanced squares in enemy territory immune to pawn eviction and supported by friendly pawns.
+- **Pawn Structure Weaknesses**: Amber corner brackets highlighting isolated pawns, backward pawns, and doubled pawns.
+- **Open & Semi-Open Files**: Faint sky blue vertical file bands showing open and semi-open files controlled by rooks and queens.
+- **Bad Bishops**: Distinct dash-dot borders highlighting bishops locked behind 4 or more friendly pawns on the same square color.
+- **Space Advantage**: Differential space control metrics across ranks 4 and 5 displayed live on the HUD.
 
 ---
 
@@ -102,8 +112,9 @@ A sleek, monochromatic floating toolbar sits above your board, paired with a Win
 | Toolbar Button | Global Shortcut | Description |
 |:---|:---:|:---|
 | `Overlay` | **Ctrl + Alt + X** | **Master Toggle**: Show or hide the entire overlay instantly |
-| `Tactics` / `Captures` | **Ctrl + Alt + M** | **Mode Switch**: Toggle between Tactical Analysis and Legal Captures |
-| `Turn` (White/Black/Auto) | **Click Turn Badge** | Explicitly toggle or cycle active player turn |
+| `Tactics` / `Captures` / `Positional` | **Ctrl + Alt + M** | **Mode Switch**: Cycle across Tactics, Captures, and Positional |
+| `Positional` | **Ctrl + Alt + P** | **Positional Hotkey**: Directly jump / toggle Positional Analysis mode |
+| `Turn` (White/Black/Auto) | **Ctrl + Alt + W** | Explicitly toggle or cycle active player turn |
 | `Player` | **Ctrl + Alt + A** | Toggle your influence arrows & highlights on/off |
 | `Enemy` | **Ctrl + Alt + S** | Toggle opponent influence arrows & highlights on/off |
 | `Defense` | **Ctrl + Alt + D** | Toggle arrows pointing to friendly defended pieces |
@@ -134,4 +145,4 @@ To verify that the monorepo packages, core rules, tactical engines, and coordina
 python -m unittest discover tests -v
 ```
 
-*(All 113 unit and integration tests passing in ~2 seconds)*
+*(All 148 unit and integration tests passing in ~2 seconds)*

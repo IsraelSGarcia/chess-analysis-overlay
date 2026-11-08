@@ -137,6 +137,13 @@ class HUDPanel(QWidget):
         self.lbl_alert.setVisible(False)
         card_layout.addWidget(self.lbl_alert)
 
+        # Opening Classification & Trap Alerts (Soft Blue)
+        self.lbl_opening = QLabel("")
+        self.lbl_opening.setWordWrap(True)
+        self.lbl_opening.setStyleSheet(THEME.get_badge_css(THEME.OPENING_HEX, bg_alpha=0.18, border_alpha=0.65))
+        self.lbl_opening.setVisible(False)
+        card_layout.addWidget(self.lbl_opening)
+
         # Winning Trades Pill (Vivid Emerald Green)
         self.lbl_trades = QLabel("")
         self.lbl_trades.setWordWrap(True)
@@ -172,6 +179,20 @@ class HUDPanel(QWidget):
         self.lbl_defended.setVisible(False)
         card_layout.addWidget(self.lbl_defended)
 
+        # Endgame Principles (Ice Cyan)
+        self.lbl_endgame = QLabel("")
+        self.lbl_endgame.setWordWrap(True)
+        self.lbl_endgame.setStyleSheet(THEME.get_badge_css(THEME.ENDGAME_HEX, bg_alpha=0.18, border_alpha=0.65))
+        self.lbl_endgame.setVisible(False)
+        card_layout.addWidget(self.lbl_endgame)
+
+        # Positional Structure & Outposts (Warm Gold)
+        self.lbl_positional = QLabel("")
+        self.lbl_positional.setWordWrap(True)
+        self.lbl_positional.setStyleSheet(THEME.get_badge_css(THEME.POSITIONAL_HEX, bg_alpha=0.18, border_alpha=0.65))
+        self.lbl_positional.setVisible(False)
+        card_layout.addWidget(self.lbl_positional)
+
         # -----------------------------------------------------------------
         # 3. Compact Footer (Material balance + Turn)
         # -----------------------------------------------------------------
@@ -204,11 +225,14 @@ class HUDPanel(QWidget):
         """Update HUD UI elements from a TacticalReport."""
         if report is None:
             self.lbl_alert.setVisible(False)
+            self.lbl_opening.setVisible(False)
             self.lbl_trades.setVisible(False)
             self.lbl_motifs.setVisible(False)
             self.lbl_hanging.setVisible(False)
             self.lbl_trapped.setVisible(False)
             self.lbl_defended.setVisible(False)
+            self.lbl_endgame.setVisible(False)
+            self.lbl_positional.setVisible(False)
             self.lbl_material.setText("Waiting for board position...")
             self.adjustSize()
             return
@@ -302,6 +326,48 @@ class HUDPanel(QWidget):
             self.lbl_defended.setVisible(True)
         else:
             self.lbl_defended.setVisible(False)
+
+        # 1b. Opening Book & Traps
+        if getattr(report, 'opening', None):
+            trap_str = f" | ⚠️ {report.opening_traps[0].name}" if report.opening_traps else ""
+            self.lbl_opening.setText(f"📖 {report.opening.display_str}{trap_str}")
+            self.lbl_opening.setVisible(True)
+        elif getattr(report, 'opening_traps', None):
+            self.lbl_opening.setText(f"⚠️ {report.opening_traps[0].description}")
+            self.lbl_opening.setVisible(True)
+        else:
+            self.lbl_opening.setVisible(False)
+
+        # 6b. Endgame Principles (Rule of the Square & Opposition)
+        endgame_parts = []
+        for rw in getattr(report, 'runaway_pawns', []):
+            if rw.can_promote_unstoppably:
+                endgame_parts.append(f"Passer on {rw.pawn_name} unstoppably promotes!")
+        if getattr(report, 'opposition', None):
+            endgame_parts.append(report.opposition.description)
+        if endgame_parts:
+            self.lbl_endgame.setText(f"👑 Endgame: {' | '.join(endgame_parts)}")
+            self.lbl_endgame.setVisible(True)
+        else:
+            self.lbl_endgame.setVisible(False)
+
+        # 6c. Positional Structure & Outposts
+        pos = getattr(report, 'positional', None)
+        if pos and (pos.outposts or any(pos.pawn_structure.isolated.values()) or any(b.is_bad for b in pos.bishops)):
+            pos_parts = []
+            if pos.outposts:
+                pos_parts.append(f"Outposts: {', '.join(o.square_name for o in pos.outposts[:2])}")
+            iso_w = pos.pawn_structure.isolated.get(chess.WHITE, [])
+            iso_b = pos.pawn_structure.isolated.get(chess.BLACK, [])
+            if iso_w or iso_b:
+                pos_parts.append(f"Isolated: {', '.join(chess.square_name(s) for s in (iso_w + iso_b)[:2])}")
+            if pos_parts:
+                self.lbl_positional.setText(f"🏛️ Structure: {' | '.join(pos_parts)}")
+                self.lbl_positional.setVisible(True)
+            else:
+                self.lbl_positional.setVisible(False)
+        else:
+            self.lbl_positional.setVisible(False)
 
         # 7. Material Balance & Turn
         lead = report.white_material_lead

@@ -136,6 +136,8 @@ class OverlayWidget(QWidget):
 
             if cfg.mode == "tactics":
                 self._paint_tactics_mode(p)
+            elif cfg.mode == "positional":
+                self._paint_positional_mode(p)
             else:
                 self._paint_captures_mode(p)
 
@@ -403,6 +405,72 @@ class OverlayWidget(QWidget):
                 self._draw_single_arrow(p, fx, fy, tx, ty, THEME.WINNING_TRADE, False, width_mult=THEME.WIDTH_WINNING)
         except Exception as exc:
             logger.debug("Winning trades paint error: %s", exc)
+
+        # ---------------------------------------------------------------------
+        # 7. Endgame Rule of the Square (Ice Cyan Dashed Bounding Box)
+        # ---------------------------------------------------------------------
+        try:
+            for rw in getattr(rep, 'runaway_pawns', []):
+                if rw.can_promote_unstoppably:
+                    top_left_sq = chess.square(rw.min_col, rw.max_row if not cfg.flipped else rw.min_row)
+                    bot_right_sq = chess.square(rw.max_col, rw.min_row if not cfg.flipped else rw.max_row)
+                    tl_rect = self._get_square_rect(top_left_sq)
+                    br_rect = self._get_square_rect(bot_right_sq)
+                    box_rect = QRectF(
+                        min(tl_rect.left(), br_rect.left()),
+                        min(tl_rect.top(), br_rect.top()),
+                        abs(br_rect.right() - tl_rect.left()),
+                        abs(br_rect.bottom() - tl_rect.top()),
+                    )
+                    p.setPen(QPen(THEME.RUNAWAY_BOX, 2.0, Qt.PenStyle.DashLine))
+                    p.drawRect(box_rect)
+        except Exception as exc:
+            logger.debug("Runaway pawn paint error: %s", exc)
+
+    def _paint_positional_mode(self, p: QPainter) -> None:
+        """Positional analysis: Outposts, pawn structure weaknesses, open files."""
+        cfg = self._config
+        rep = self._tactical_report
+        if not rep or not rep.positional:
+            return
+
+        pos = rep.positional
+
+        try:
+            # 1. Controlled Open and Semi-Open Files (Faint Sky Blue vertical band)
+            for of in pos.open_files:
+                col = of.file_idx if not cfg.flipped else 7 - of.file_idx
+                file_rect = QRectF(col * self._sq_size, 0, self._sq_size, 8 * self._sq_size)
+                p.fillRect(file_rect, THEME.OPEN_FILE)
+                p.setPen(QPen(THEME.OPEN_FILE_BORDER, 1.0, Qt.PenStyle.DotLine))
+                p.drawRect(file_rect)
+
+            # 2. Outpost Squares (Gentle Mint Green fill + Corner Brackets)
+            for out in pos.outposts:
+                rect = self._get_square_rect(out.square)
+                p.fillRect(rect, THEME.OUTPOST)
+                self._draw_corner_brackets(p, rect, THEME.OUTPOST_BORDER, bracket_len=THEME.BRACKET_LEN, pen_width=THEME.BRACKET_PEN_WIDTH)
+
+            # 3. Pawn Structure Weaknesses (Amber corner brackets on isolated/backward/doubled)
+            weak_pawns = set()
+            for color_key in (chess.WHITE, chess.BLACK):
+                weak_pawns.update(pos.pawn_structure.isolated.get(color_key, []))
+                weak_pawns.update(pos.pawn_structure.backward.get(color_key, []))
+                weak_pawns.update(pos.pawn_structure.doubled.get(color_key, []))
+
+            for sq in weak_pawns:
+                rect = self._get_square_rect(sq)
+                self._draw_corner_brackets(p, rect, THEME.PAWN_WEAKNESS, bracket_len=8.0, pen_width=1.8)
+
+            # 4. Bad Bishops
+            for b in pos.bishops:
+                if b.is_bad:
+                    rect = self._get_square_rect(b.square)
+                    p.setPen(QPen(THEME.BAD_BISHOP, 1.8, Qt.PenStyle.DashDotLine))
+                    p.drawRect(rect)
+
+        except Exception as exc:
+            logger.debug("Positional paint error: %s", exc)
 
     # -------------------------------------------------------------------------
     # Square Highlights

@@ -84,6 +84,14 @@ class TestMonorepoArchitecture(unittest.TestCase):
             find_xray_rays,
             find_all_blunders,
             generate_tactical_report,
+            identify_opening_from_moves,
+            is_opening_phase,
+            detect_opening_traps,
+            evaluate_runaway_passed_pawns,
+            detect_king_opposition,
+            classify_passed_pawns,
+            is_endgame,
+            generate_positional_report,
         )
         b = chess.Board("r1bqkb1r/pppp1ppp/2n5/4p3/2B1n3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 5")
         report = generate_tactical_report(b, active_turn=chess.WHITE)
@@ -91,6 +99,7 @@ class TestMonorepoArchitecture(unittest.TestCase):
         self.assertEqual(report.board.fen(), b.fen())
         self.assertIn(MotifType.MATING_THREAT, [m for m in MotifType])
         self.assertIn(MotifType.REMOVING_DEFENDER, [m for m in MotifType])
+        self.assertIsNotNone(report.positional)
 
     def test_overlay_imports(self):
         from overlay.configuration import THEME, VisualTheme, Settings, OverlayConfig

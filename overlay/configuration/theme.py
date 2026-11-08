@@ -56,6 +56,28 @@ class VisualTheme:
     BACK_RANK: QColor = QColor(255, 23, 68, 220)
 
     # -------------------------------------------------------------------------
+    # Positional & Strategic Mode Palette
+    # -------------------------------------------------------------------------
+    OUTPOST: QColor = QColor(0, 230, 118, 55)
+    OUTPOST_BORDER: QColor = QColor(0, 230, 118, 185)
+    OUTPOST_HEX: str = "#00e676"
+
+    PAWN_WEAKNESS: QColor = QColor(255, 171, 0, 190)
+    PAWN_WEAKNESS_HEX: str = "#ffab00"
+
+    RUNAWAY_BOX: QColor = QColor(0, 229, 255, 175)
+    RUNAWAY_HEX: str = "#00e5ff"
+
+    OPEN_FILE: QColor = QColor(0, 176, 255, 30)
+    OPEN_FILE_BORDER: QColor = QColor(0, 176, 255, 120)
+    BAD_BISHOP: QColor = QColor(255, 109, 0, 170)
+
+    OPENING_HEX: str = "#58a6ff"
+    TRAP_HEX: str = "#ff7b72"
+    ENDGAME_HEX: str = "#00e5ff"
+    POSITIONAL_HEX: str = "#d29922"
+
+    # -------------------------------------------------------------------------
     # Captures Mode Palette
     # -------------------------------------------------------------------------
     PLAYER_CAPTURE: QColor = QColor(41, 121, 255, 200)

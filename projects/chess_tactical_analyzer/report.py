@@ -26,6 +26,26 @@ from projects.chess_tactical_analyzer.forcing_search import TacticalSequence, ca
 from projects.chess_tactical_analyzer.blunders import BlunderMove, find_all_blunders
 from projects.chess_tactical_analyzer.trapped import TrappedPiece, find_trapped_pieces
 from projects.chess_tactical_analyzer.xray import XRayRay, find_xray_rays
+from projects.chess_tactical_analyzer.openings import (
+    OpeningInfo,
+    OpeningTrap,
+    identify_opening_from_moves,
+    detect_opening_traps,
+    is_opening_phase,
+)
+from projects.chess_tactical_analyzer.endgames import (
+    RunawayPawnInfo,
+    OppositionInfo,
+    PassedPawnInfo,
+    is_endgame,
+    evaluate_runaway_passed_pawns,
+    detect_king_opposition,
+    classify_passed_pawns,
+)
+from projects.chess_tactical_analyzer.positional import (
+    PositionalReport,
+    generate_positional_report,
+)
 
 
 @dataclass
@@ -41,6 +61,12 @@ class TacticalReport:
     blunders: Dict[chess.Color, List[BlunderMove]] = field(default_factory=dict)
     trapped_pieces: Dict[chess.Color, List[TrappedPiece]] = field(default_factory=dict)
     xray_rays: List[XRayRay] = field(default_factory=list)
+    opening: Optional[OpeningInfo] = None
+    opening_traps: List[OpeningTrap] = field(default_factory=list)
+    runaway_pawns: List[RunawayPawnInfo] = field(default_factory=list)
+    opposition: Optional[OppositionInfo] = None
+    passed_pawns: List[PassedPawnInfo] = field(default_factory=list)
+    positional: Optional[PositionalReport] = None
 
     @property
     def white_material_lead(self) -> float:
@@ -191,6 +217,21 @@ def generate_tactical_report(
     # 9. Slider X-Ray rays
     xray_rays = find_xray_rays(board)
 
+    # 10. Opening analysis & trap recognition
+    opening = None
+    if hasattr(board, 'move_stack') and board.move_stack:
+        uci_moves = [m.uci() for m in board.move_stack]
+        opening = identify_opening_from_moves(uci_moves)
+    opening_traps = detect_opening_traps(board) if is_opening_phase(board) else []
+
+    # 11. Endgame geometric principles (Rule of the Square & Opposition)
+    runaway_pawns = evaluate_runaway_passed_pawns(board)
+    opposition = detect_king_opposition(board) if is_endgame(board) else None
+    passed_pawns = classify_passed_pawns(board)
+
+    # 12. Positional structure & outposts
+    positional = generate_positional_report(board, attack_map)
+
     return TacticalReport(
         board=board,
         material_balance_cp=mat_balance,
@@ -202,4 +243,10 @@ def generate_tactical_report(
         blunders=blunders,
         trapped_pieces=trapped_pieces,
         xray_rays=xray_rays,
+        opening=opening,
+        opening_traps=opening_traps,
+        runaway_pawns=runaway_pawns,
+        opposition=opposition,
+        passed_pawns=passed_pawns,
+        positional=positional,
     )

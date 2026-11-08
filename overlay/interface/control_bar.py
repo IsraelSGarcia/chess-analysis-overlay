@@ -111,9 +111,9 @@ class ControlBar(QWidget):
 
         # Mode switch: Captures vs Tactics
         self.btn_mode = QPushButton("Tactics")
-        self.btn_mode.setToolTip("Switch Mode: Legal Captures vs Tactical Analysis (Ctrl+Alt+M)")
+        self.btn_mode.setToolTip("Switch Mode: Tactics / Captures / Positional (Ctrl+Alt+M)")
         self.btn_mode.clicked.connect(self.on_toggle_mode)
-        self._style_mode_button(self.btn_mode, is_tactics=True)
+        self._style_mode_button(self.btn_mode, mode="tactics")
         pill_layout.addWidget(self.btn_mode)
 
         # Active turn toggle (Explicit override for White / Black to move)
@@ -223,21 +223,27 @@ class ControlBar(QWidget):
         active_turn: bool = True,
     ) -> None:
         self.btn_master.setChecked(overlay_visible)
-        is_tac = (mode == "tactics")
-        self.btn_mode.setText("Tactics" if is_tac else "Captures")
-        self._style_mode_button(self.btn_mode, is_tactics=is_tac)
+        mode_str = mode.lower()
+        if mode_str == "tactics":
+            self.btn_mode.setText("Tactics")
+        elif mode_str == "positional":
+            self.btn_mode.setText("Positional")
+        else:
+            self.btn_mode.setText("Captures")
+        self._style_mode_button(self.btn_mode, mode=mode_str)
 
         # STRICT FEATURE SEPARATION:
-        # Hide capture-specific controls in Tactics mode
-        self.btn_player.setVisible(not is_tac)
-        self.btn_enemy.setVisible(not is_tac)
-        self.btn_defense.setVisible(not is_tac)
-        self.btn_flip.setVisible(not is_tac)
-        self.btn_hl.setVisible(not is_tac)
+        # Hide capture-specific controls in Tactics and Positional modes
+        is_captures = (mode_str == "captures")
+        self.btn_player.setVisible(is_captures)
+        self.btn_enemy.setVisible(is_captures)
+        self.btn_defense.setVisible(is_captures)
+        self.btn_flip.setVisible(is_captures)
+        self.btn_hl.setVisible(is_captures)
 
-        # In Tactics mode, display Turn toggle and HUD toggle
-        self.btn_hud.setVisible(is_tac)
-        self.btn_turn.setVisible(is_tac)
+        # In Tactics and Positional modes, display Turn toggle and HUD toggle
+        self.btn_hud.setVisible(not is_captures)
+        self.btn_turn.setVisible(not is_captures)
         self.btn_turn.setText("Turn: White" if active_turn else "Turn: Black")
         self._style_turn_button(self.btn_turn, is_white=active_turn)
 
@@ -283,8 +289,8 @@ class ControlBar(QWidget):
                 }
             """)
 
-    def _style_mode_button(self, btn: QPushButton, is_tactics: bool) -> None:
-        if is_tactics:
+    def _style_mode_button(self, btn: QPushButton, mode: str = "tactics") -> None:
+        if mode == "tactics":
             btn.setStyleSheet("""
                 QPushButton {
                     background-color: rgba(187, 134, 252, 35);
@@ -299,6 +305,23 @@ class ControlBar(QWidget):
                     background-color: rgba(187, 134, 252, 55);
                     color: #ffffff;
                     border-color: rgba(187, 134, 252, 160);
+                }
+            """)
+        elif mode == "positional":
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: rgba(86, 211, 100, 35);
+                    color: #7ee787;
+                    border: 1px solid rgba(86, 211, 100, 100);
+                    border-radius: 4px;
+                    padding: 3px 9px;
+                    font-size: 11px;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background-color: rgba(86, 211, 100, 55);
+                    color: #ffffff;
+                    border-color: rgba(86, 211, 100, 160);
                 }
             """)
         else:
